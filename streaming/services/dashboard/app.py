@@ -33,6 +33,7 @@ from db import (
     get_products,
     get_reviews_page,
     get_sentiment_distribution,
+    get_time_bounds,
     get_time_series_rating,
     get_top_products_by_rating,
     get_total_alerts_count,
@@ -256,12 +257,45 @@ def halaman_ringkasan(
             f"{info.get('f1', 0):.4f}".replace(".", ",") if info.get("f1") is not None else "—",
             sub=f"macro F1 · v{info.get('version', '—')}")
 
-    df_tren = get_time_series_rating(filters)
-    with kartu("Tren Rating", "Rata-rata rating per 10 menit"):
-        if df_tren.empty:
-            kosong("Belum ada data rating pada rentang ini.")
-        else:
-            st.plotly_chart(chart_tren(df_tren), width="stretch", config=PLOT_CONFIG)
+    st.markdown("<div style='height:0.65rem'></div>", unsafe_allow_html=True)
+
+    awal_data, akhir_data = get_time_bounds(filters)
+    if awal_data is None or akhir_data is None:
+        rentang_hari = 0
+    else:
+        rentang_hari = max(0, (akhir_data - awal_data).days)
+    if rentang_hari <= 1:
+        bucket, label_bucket, tick = "10 minutes", "10 menit", "%H:%M"
+    elif rentang_hari <= 7:
+        bucket, label_bucket, tick = "1 hour", "jam", "%d/%m %H:%M"
+    else:
+        bucket, label_bucket, tick = "1 day", "hari", "%d/%m"
+
+    kiri_tren, kanan_tren = st.columns([2, 1])
+    with kiri_tren:
+        with kartu("Tren Rating", f"Rata-rata per {label_bucket}"):
+            df_tren = get_time_series_rating(filters, bucket=bucket)
+            if df_tren.empty:
+                kosong("Belum ada data rating pada rentang ini.")
+            else:
+                st.plotly_chart(
+                    chart_tren(df_tren, tickformat=tick),
+                    width="stretch",
+                    config=PLOT_CONFIG,
+                )
+    with kanan_tren:
+        with kartu("10 Menit Terakhir", "Rata-rata per menit"):
+            df_recent = get_time_series_rating(
+                filters, bucket="1 minute", since_minutes=10
+            )
+            if df_recent.empty:
+                kosong("Belum ada ulasan dalam 10 menit terakhir.")
+            else:
+                st.plotly_chart(
+                    chart_tren(df_recent, tickformat="%H:%M"),
+                    width="stretch",
+                    config=PLOT_CONFIG,
+                )
 
     kiri, kanan = st.columns(2)
     with kiri:

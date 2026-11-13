@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 from contextlib import contextmanager
 from math import ceil
 
@@ -76,11 +77,11 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 .card-title { font-size: 0.82rem; font-weight: 600; color: var(--ink); margin: 0 0 0.15rem; }
 .card-sub { font-size: 0.76rem; color: #5A6B7B; margin: 0 0 0.2rem; }
 
-div[data-testid="stVerticalBlockBorderWrapper"] {
+div[class*="st-key-card-"] {
   background: #FFFFFF !important;
   border: 1px solid var(--line) !important;
   border-radius: 6px !important;
-  padding: 0.5rem 0.7rem 0.35rem !important;
+  padding: 0.55rem 0.75rem 0.4rem !important;
   box-shadow: 0 1px 2px rgba(47, 62, 78, 0.05);
 }
 
@@ -181,7 +182,8 @@ def kpi(label: str, value: str, merah: bool = False, sub: str = "") -> None:
 
 @contextmanager
 def kartu(judul: str, sub: str = ""):
-    with st.container(border=True):
+    kunci = "card-" + re.sub(r"[^a-z0-9]+", "-", judul.lower()).strip("-")
+    with st.container(border=True, key=kunci):
         sub_html = f'<div class="card-sub">{html.escape(sub)}</div>' if sub else ""
         st.markdown(
             f'<div class="card-title">{html.escape(judul)}</div>{sub_html}',
@@ -211,7 +213,7 @@ def waktu(value) -> str:
 def gaya(fig: go.Figure, tinggi: int = 300, legenda: bool = False) -> go.Figure:
     fig.update_layout(
         height=tinggi,
-        margin=dict(l=8, r=18, t=8, b=8),
+        margin=dict(l=8, r=18, t=14, b=8),
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FFFFFF",
         font=dict(size=12, color=INK_SOFT, family="Source Sans Pro, system-ui, sans-serif"),
@@ -240,7 +242,7 @@ def gaya(fig: go.Figure, tinggi: int = 300, legenda: bool = False) -> go.Figure:
     return fig
 
 
-def chart_tren(df: pd.DataFrame) -> go.Figure:
+def chart_tren(df: pd.DataFrame, tickformat: str = "%H:%M", tinggi: int = 290) -> go.Figure:
     fig = go.Figure(
         go.Scatter(
             x=df["bucket"],
@@ -253,9 +255,9 @@ def chart_tren(df: pd.DataFrame) -> go.Figure:
             hovertemplate="%{x|%d/%m %H:%M}<br>Rating %{y:.2f}<extra></extra>",
         )
     )
-    fig.update_yaxes(range=[1, 5], dtick=1)
-    fig.update_xaxes(tickformat="%H:%M", nticks=8)
-    return gaya(fig, tinggi=290)
+    fig.update_yaxes(range=[1, 5.3], dtick=1)
+    fig.update_xaxes(tickformat=tickformat, nticks=8)
+    return gaya(fig, tinggi=tinggi)
 
 
 def chart_sentimen(df: pd.DataFrame) -> go.Figure:
@@ -317,7 +319,7 @@ def chart_produk(df: pd.DataFrame) -> go.Figure:
             orientation="h",
             marker=dict(color=colors),
             text=[
-                f"{rating(v)} · {int(n)} ulasan"
+                f"{rating(v)} ({int(n)} ulasan)"
                 for v, n in zip(data["avg_rating"], data["total_reviews"])
             ],
             textposition="outside",

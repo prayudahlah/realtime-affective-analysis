@@ -137,12 +137,22 @@ def get_kpi_metrics(filters: dict) -> dict:
     }
 
 
+ALLOWED_BUCKETS = {"1 minute", "10 minutes", "1 hour", "1 day"}
+
+
 @st.cache_data(ttl=10)
-def get_time_series_rating(filters: dict) -> pd.DataFrame:
+def get_time_series_rating(
+    filters: dict, bucket: str = "10 minutes", since_minutes: int | None = None
+) -> pd.DataFrame:
+    if bucket not in ALLOWED_BUCKETS:
+        raise ValueError(f"Bucket tidak dikenal: {bucket}")
     where, params = _build_review_filter(filters)
+    if since_minutes:
+        extra = f"create_time >= NOW() - INTERVAL '{int(since_minutes)} minutes'"
+        where = (where + " AND " + extra) if where else ("WHERE " + extra)
     sql = f"""
         SELECT
-            date_bin('10 minutes', create_time, TIMESTAMP 'epoch') AS bucket,
+            date_bin('{bucket}', create_time, TIMESTAMP 'epoch') AS bucket,
             ROUND(AVG(rating_star)::numeric, 2)                    AS avg_rating,
             COUNT(*)                                               AS review_count
         FROM reviews
@@ -330,3 +340,12 @@ def get_data_freshness() -> dict:
     with engine.connect() as conn:
         row = conn.execute(text(sql)).fetchone()
     return {"processed_at": row[0], "create_time": row[1]}
+
+
+@st.cache_data(ttl=10)
+def get_time_bounds(filters: dict) -> tuple:
+    where, params = _build_review_filter(filters)
+    sql = f"SELECT MIN(create_time), MAX(create_time) FROM reviews {where}"
+    with engine.connect() as conn:
+        row = conn.execute(text(sql), params).fetchone()
+    return row[0], row[1]
