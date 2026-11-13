@@ -1,0 +1,45 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Daftar task yang tersedia
+    cmds:
+      - task --list
+
+  up:
+    desc: Jalankan seluruh service pipeline
+    cmds:
+      - docker compose -f streaming/compose.yaml --profile demo up -d --build
+
+  down:
+    desc: Hentikan seluruh service pipeline
+    cmds:
+      - docker compose -f streaming/compose.yaml --profile demo down
+
+  logs:
+    desc: Ikuti log seluruh service
+    cmds:
+      - docker compose -f streaming/compose.yaml --profile demo logs -f
+
+  train:
+    desc: Latih ulang model dan hasilkan artifact berversi
+    dir: ml
+    cmds:
+      - uv run python -m affective_ml.train --config configs/default.yaml
+
+  test:
+    desc: Jalankan unit test dan validasi compose
+    cmds:
+      - task: test-ml
+      - docker compose -f streaming/compose.yaml config --quiet
+
+  test-ml:
+    dir: ml
+    cmds:
+      - uv run pytest
+
+  lint:
+    desc: Jalankan ruff
+    dir: ml
+    cmds:
+      - uv run ruff check .
