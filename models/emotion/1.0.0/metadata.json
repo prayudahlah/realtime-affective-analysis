@@ -1,0 +1,240 @@
+{
+  "dataset": {
+    "path": "/home/prayudahlah/projects/personal/realtime-affective-analysis/ml/data/raw/ecommerce_reviews.csv",
+    "rows_raw": 5400,
+    "rows_used": 5288,
+    "duplicates_removed": 112,
+    "sha256": "05e330ffca70680814e73007c4ea350b7b51a2d77916629cadae6e35c7aa751d"
+  },
+  "split": {
+    "test_size": 0.2,
+    "seed": 42,
+    "train_rows": 4230,
+    "test_rows": 1058,
+    "test_index_hash": "e5135370a7141323"
+  },
+  "features": {
+    "order": [
+      "tfidf",
+      "n_exclamation",
+      "n_question",
+      "n_allcaps",
+      "n_ellipsis",
+      "max_char_repeat",
+      "n_demands",
+      "n_uncertainty",
+      "n_swear",
+      "n_attachment",
+      "n_repurchase",
+      "n_transactional",
+      "sentiment_positive"
+    ],
+    "tfidf": {
+      "max_features": 1500,
+      "ngram_range": [
+        1,
+        1
+      ]
+    },
+    "basic11": true,
+    "sentiment_indicator": true,
+    "sentiment_indicator_source": "out_of_fold"
+  },
+  "model": {
+    "algo": "LogisticRegression",
+    "params": {
+      "C": 1,
+      "max_iter": 1000,
+      "solver": "lbfgs"
+    },
+    "sampling": {
+      "method": "smote",
+      "k_neighbors": 3
+    }
+  },
+  "metrics": {
+    "cv": {
+      "f1_macro_mean": 0.6003,
+      "f1_macro_std": 0.0129,
+      "folds": 5
+    },
+    "holdout": {
+      "accuracy": 0.6134,
+      "precision_macro": 0.581,
+      "recall_macro": 0.5857,
+      "f1_macro": 0.5818,
+      "per_class": {
+        "Anger": {
+          "precision": 0.4,
+          "recall": 0.4889,
+          "f1": 0.44,
+          "support": 135
+        },
+        "Fear": {
+          "precision": 0.4439,
+          "recall": 0.4663,
+          "f1": 0.4548,
+          "support": 178
+        },
+        "Happy": {
+          "precision": 0.794,
+          "recall": 0.76,
+          "f1": 0.7766,
+          "support": 350
+        },
+        "Love": {
+          "precision": 0.6585,
+          "recall": 0.6792,
+          "f1": 0.6687,
+          "support": 159
+        },
+        "Sadness": {
+          "precision": 0.6087,
+          "recall": 0.5339,
+          "f1": 0.5688,
+          "support": 236
+        }
+      },
+      "confusion_matrix": [
+        [
+          66,
+          39,
+          1,
+          4,
+          25
+        ],
+        [
+          43,
+          83,
+          12,
+          4,
+          36
+        ],
+        [
+          5,
+          14,
+          266,
+          45,
+          20
+        ],
+        [
+          5,
+          3,
+          43,
+          108,
+          0
+        ],
+        [
+          46,
+          48,
+          13,
+          3,
+          126
+        ]
+      ],
+      "labels": [
+        "Anger",
+        "Fear",
+        "Happy",
+        "Love",
+        "Sadness"
+      ]
+    }
+  },
+  "baseline": {
+    "strategy": "most_frequent",
+    "holdout": {
+      "accuracy": 0.3308,
+      "precision_macro": 0.0662,
+      "recall_macro": 0.2,
+      "f1_macro": 0.0994,
+      "per_class": {
+        "Anger": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 135
+        },
+        "Fear": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 178
+        },
+        "Happy": {
+          "precision": 0.3308,
+          "recall": 1.0,
+          "f1": 0.4972,
+          "support": 350
+        },
+        "Love": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 159
+        },
+        "Sadness": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 236
+        }
+      },
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          135,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          178,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          350,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          159,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          236,
+          0,
+          0
+        ]
+      ],
+      "labels": [
+        "Anger",
+        "Fear",
+        "Happy",
+        "Love",
+        "Sadness"
+      ]
+    }
+  },
+  "task": "emotion",
+  "version": "1.0.0",
+  "trained_at": "2026-11-13T17:15:22+00:00",
+  "environment": {
+    "python": "3.12.13",
+    "platform": "Linux-7.2.14-arch1-1-x86_64-with-glibc2.44",
+    "scikit-learn": "1.9.0",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "imbalanced-learn": "0.14.2"
+  }
+}

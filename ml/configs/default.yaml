@@ -1,0 +1,37 @@
+seed: 42
+
+data:
+  path: data/raw/ecommerce_reviews.csv
+  text_column: Customer Review
+  sentiment_column: Sentiment
+  emotion_column: Emotion
+  deduplicate: true
+  cache_dir: data/intermediate
+
+split:
+  test_size: 0.2
+  seed: 42
+
+sentiment:
+  version: 1.0.0
+  tfidf:
+    max_features: 1500
+    ngram_range: [1, 1]
+  grid:
+    C: [0.1, 1, 10]
+  cv_folds: 5
+
+emotion:
+  version: 1.0.0
+  tfidf:
+    max_features: 1500
+    ngram_range: [1, 1]
+  grid:
+    C: [0.1, 1, 10]
+  cv_folds: 5
+  sampling:
+    method: smote
+    k_neighbors: 3
+
+output:
+  dir: ../models

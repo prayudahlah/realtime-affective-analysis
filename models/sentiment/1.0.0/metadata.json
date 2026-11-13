@@ -1,0 +1,139 @@
+{
+  "dataset": {
+    "path": "/home/prayudahlah/projects/personal/realtime-affective-analysis/ml/data/raw/ecommerce_reviews.csv",
+    "rows_raw": 5400,
+    "rows_used": 5288,
+    "duplicates_removed": 112,
+    "sha256": "05e330ffca70680814e73007c4ea350b7b51a2d77916629cadae6e35c7aa751d"
+  },
+  "split": {
+    "test_size": 0.2,
+    "seed": 42,
+    "train_rows": 4230,
+    "test_rows": 1058,
+    "test_index_hash": "e5135370a7141323"
+  },
+  "features": {
+    "order": [
+      "tfidf",
+      "n_exclamation",
+      "n_question",
+      "n_allcaps",
+      "n_ellipsis",
+      "max_char_repeat",
+      "n_demands",
+      "n_uncertainty",
+      "n_swear",
+      "n_attachment",
+      "n_repurchase",
+      "n_transactional"
+    ],
+    "tfidf": {
+      "max_features": 1500,
+      "ngram_range": [
+        1,
+        1
+      ]
+    },
+    "basic11": true,
+    "sentiment_indicator": false
+  },
+  "model": {
+    "algo": "LogisticRegression",
+    "params": {
+      "C": 10,
+      "max_iter": 1000,
+      "solver": "lbfgs"
+    },
+    "sampling": null
+  },
+  "metrics": {
+    "cv": {
+      "f1_macro_mean": 0.9078,
+      "f1_macro_std": 0.0043,
+      "folds": 5
+    },
+    "holdout": {
+      "accuracy": 0.9216,
+      "precision_macro": 0.9219,
+      "recall_macro": 0.921,
+      "f1_macro": 0.9214,
+      "per_class": {
+        "Negative": {
+          "precision": 0.9161,
+          "recall": 0.9344,
+          "f1": 0.9252,
+          "support": 549
+        },
+        "Positive": {
+          "precision": 0.9277,
+          "recall": 0.9077,
+          "f1": 0.9176,
+          "support": 509
+        }
+      },
+      "confusion_matrix": [
+        [
+          513,
+          36
+        ],
+        [
+          47,
+          462
+        ]
+      ],
+      "labels": [
+        "Negative",
+        "Positive"
+      ]
+    }
+  },
+  "baseline": {
+    "strategy": "most_frequent",
+    "holdout": {
+      "accuracy": 0.5189,
+      "precision_macro": 0.2595,
+      "recall_macro": 0.5,
+      "f1_macro": 0.3416,
+      "per_class": {
+        "Negative": {
+          "precision": 0.5189,
+          "recall": 1.0,
+          "f1": 0.6833,
+          "support": 549
+        },
+        "Positive": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "support": 509
+        }
+      },
+      "confusion_matrix": [
+        [
+          549,
+          0
+        ],
+        [
+          509,
+          0
+        ]
+      ],
+      "labels": [
+        "Negative",
+        "Positive"
+      ]
+    }
+  },
+  "task": "sentiment",
+  "version": "1.0.0",
+  "trained_at": "2026-11-13T17:15:17+00:00",
+  "environment": {
+    "python": "3.12.13",
+    "platform": "Linux-7.2.14-arch1-1-x86_64-with-glibc2.44",
+    "scikit-learn": "1.9.0",
+    "numpy": "2.4.6",
+    "scipy": "1.17.1",
+    "imbalanced-learn": "0.14.2"
+  }
+}
