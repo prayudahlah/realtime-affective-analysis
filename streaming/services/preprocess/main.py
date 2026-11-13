@@ -29,6 +29,8 @@ logger = logging.getLogger("DataPoller")
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "polled-data")
+DEAD_LETTER_TOPIC = os.getenv("DEAD_LETTER_TOPIC", "dead-letter")
+DEBUG_SINKS = os.getenv("DEBUG_SINKS", "false").lower() == "true"
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongodb:27017")
 MONGO_DB = os.getenv("MONGO_DB", "ecommerce")
 MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "reviews")
@@ -364,7 +366,17 @@ def _basic_features_row(text):
 
 def main():
     from pyspark.sql import SparkSession, DataFrame
-    from pyspark.sql.functions import from_json, col, current_timestamp, udf
+    from pyspark.sql.functions import (
+        from_json,
+        col,
+        current_timestamp,
+        udf,
+        trim,
+        length,
+        to_json,
+        struct,
+        expr,
+    )
     from pyspark.sql.types import (
         StructType,
         StructField,
@@ -489,9 +501,32 @@ def main():
         from_json(col("value").cast("string"), kafka_schema).alias("data")
     ).select("data.*")
 
+    invalid_condition = (
+        col("review").isNull()
+        | (length(trim(col("review"))) == 0)
+        | col("ctime").isNull()
+        | (col("ctime") <= 0)
+        | col("rating").isNull()
+        | (col("rating") < 1)
+        | (col("rating") > 5)
+    )
+    valid = parsed.where(~invalid_condition)
+    invalid = parsed.where(invalid_condition).withColumn(
+        "reason",
+        expr(
+            """
+            case
+                when review is null or trim(review) = '' then 'review kosong'
+                when ctime is null or ctime <= 0 then 'ctime tidak valid'
+                when rating is null or rating < 1 or rating > 5 then 'rating di luar 1-5'
+                else 'tidak diketahui'
+            end
+            """
+        ),
+    )
 
     processed = (
-        parsed.withColumn("review_preprocessed", preprocess_udf(col("review")))
+        valid.withColumn("review_preprocessed", preprocess_udf(col("review")))
         .withColumn("emotion_features_basic", basic_features_udf(col("review")))
         .withColumn(
             "sentiment_vectorized", sentiment_vectorize_udf(col("review_preprocessed"))
@@ -533,6 +568,28 @@ def main():
             client.close()
 
 
+    dead_letter = invalid.select(
+        to_json(
+            struct(
+                col("nama pengguna"),
+                col("produk"),
+                col("review"),
+                col("rating"),
+                col("ctime"),
+                col("reason"),
+            )
+        ).alias("value")
+    )
+
+    dlq_query = (
+        dead_letter.writeStream.format("kafka")
+        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
+        .option("topic", DEAD_LETTER_TOPIC)
+        .option("checkpointLocation", CHECKPOINT_DIR + "/dead-letter")
+        .trigger(processingTime=SPARK_TRIGGER_INTERVAL)
+        .start()
+    )
+
     mongo_query = (
         processed.writeStream.foreachBatch(write_to_mongo)
         .outputMode("append")
@@ -541,13 +598,14 @@ def main():
         .start()
     )
 
-    debug_query = (
-        processed.writeStream.format("console")
-        .outputMode("append")
-        .option("checkpointLocation", CHECKPOINT_DIR + "/console_debug")
-        .trigger(processingTime=SPARK_TRIGGER_INTERVAL)
-        .start()
-    )
+    if DEBUG_SINKS:
+        debug_query = (
+            processed.writeStream.format("console")
+            .outputMode("append")
+            .option("checkpointLocation", CHECKPOINT_DIR + "/console_debug")
+            .trigger(processingTime=SPARK_TRIGGER_INTERVAL)
+            .start()
+        )
 
     mongo_query.awaitTermination()
 

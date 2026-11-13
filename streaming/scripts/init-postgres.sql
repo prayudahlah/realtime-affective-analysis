@@ -40,6 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_reviews_sentiment ON reviews(sentiment);
 CREATE INDEX IF NOT EXISTS idx_reviews_rating_star ON reviews(rating_star);
 CREATE INDEX IF NOT EXISTS idx_alerts_alert_type ON alerts(alert_type);
 CREATE INDEX IF NOT EXISTS idx_alerts_triggered_at ON alerts(triggered_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_review_unique
+    ON alerts(alert_type, review_id) WHERE review_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_model_metadata_is_active ON model_metadata(is_active);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_model_metadata_version
     ON model_metadata(model_name, version);

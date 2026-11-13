@@ -20,6 +20,14 @@ SPARK_TRIGGER_INTERVAL = os.getenv("SPARK_TRIGGER_INTERVAL", "1 seconds")
 SPARK_DRIVER_HOST = os.getenv("SPARK_DRIVER_HOST", "").strip()
 CHECKPOINT_DIR = os.getenv("CHECKPOINT_DIR", "/app/data/checkpoint")
 MODEL_ROOT = os.getenv("MODEL_ROOT", "/app/models")
+DEBUG_SINKS = os.getenv("DEBUG_SINKS", "false").lower() == "true"
+RATING_ALERT_THRESHOLD = float(os.getenv("RATING_ALERT_THRESHOLD", "4.0"))
+RATING_ALERT_WINDOW_MINUTES = int(os.getenv("RATING_ALERT_WINDOW_MINUTES", "10"))
+NEGATIVE_EMOTIONS = {
+    emotion.strip()
+    for emotion in os.getenv("NEGATIVE_EMOTIONS", "Fear,Anger,Sadness").split(",")
+    if emotion.strip()
+}
 POSTGRES_HOST = os.getenv("INFERENCE_DB_HOST", "localhost")
 POSTGRES_PORT = int(os.getenv("INFERENCE_DB_HOST_PORT", "5432"))
 POSTGRES_DB = os.getenv("INFERENCE_DB_NAME", "postgres")
@@ -310,7 +318,7 @@ def main():
         from_unixtime(col("create_time_ts")).alias("create_time"),
         col("result.sentiment_label").alias("sentiment"),
         col("result.emotion_label").alias("emotion"),
-    )
+    ).where(col("sentiment").isNotNull() & col("emotion").isNotNull())
 
 
     def write_to_postgres(df: DataFrame, epoch_id: int):
@@ -356,11 +364,7 @@ def main():
                         ),
                     )
                     review_id = cur.fetchone()[0]
-                    if row.sentiment == "Negative" or row.emotion in (
-                        "Fear",
-                        "Anger",
-                        "Sadness",
-                    ):
+                    if row.sentiment == "Negative" or row.emotion in NEGATIVE_EMOTIONS:
                         logger.info(
                             "[ALERT] Sentimen negatif terdeteksi: %s", row.comment_id
                         )
@@ -368,6 +372,7 @@ def main():
                             """
                             INSERT INTO alerts (alert_type, comment, review_id)
                             VALUES ('sentiment_negative', %s, %s)
+                            ON CONFLICT DO NOTHING
                         """,
                             (row.comment, review_id),
                         )
@@ -387,21 +392,27 @@ def main():
         .start()
     )
 
-    debug_query = (
-        predictions.writeStream.format("console")
-        .outputMode("append")
-        .option("checkpointLocation", CHECKPOINT_DIR + "/console_debug")
-        .trigger(processingTime=SPARK_TRIGGER_INTERVAL)
-        .start()
-    )
+    if DEBUG_SINKS:
+        debug_query = (
+            predictions.writeStream.format("console")
+            .outputMode("append")
+            .option("checkpointLocation", CHECKPOINT_DIR + "/console_debug")
+            .trigger(processingTime=SPARK_TRIGGER_INTERVAL)
+            .start()
+        )
 
     recent_ratings = (
         predictions.withColumn("ts", col("create_time").cast(TimestampType()))
-        .filter(col("ts") >= expr("current_timestamp() - INTERVAL '10 minutes'"))
+        .filter(
+            col("ts")
+            >= expr(
+                f"current_timestamp() - INTERVAL {RATING_ALERT_WINDOW_MINUTES} minutes"
+            )
+        )
         .withWatermark("ts", "1 minute")
-        .groupBy(window(col("ts"), "10 minutes", "1 minute"))
+        .groupBy(window(col("ts"), f"{RATING_ALERT_WINDOW_MINUTES} minutes", "1 minute"))
         .agg(avg("rating_star").alias("avg_rating"))
-        .filter(col("avg_rating") < 4.0)
+        .filter(col("avg_rating") < RATING_ALERT_THRESHOLD)
     )
 
     def write_rating_alert(df: DataFrame, epoch_id: int):
@@ -428,10 +439,10 @@ def main():
                         WHERE NOT EXISTS (
                             SELECT 1 FROM alerts
                             WHERE alert_type = 'rating_drop'
-                            AND triggered_at > NOW() - INTERVAL '10 minutes'
+                            AND triggered_at > NOW() - INTERVAL '%s minutes'
                         )
                     """,
-                        (float(row.avg_rating),),
+                        (float(row.avg_rating), RATING_ALERT_WINDOW_MINUTES),
                     )
             conn.commit()
         finally:
