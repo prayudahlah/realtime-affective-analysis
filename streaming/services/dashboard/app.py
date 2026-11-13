@@ -26,6 +26,7 @@ from config import ALL_PRODUCT, AUTO_REFRESH_MS, PAGE_SIZE
 from db import (
     get_active_models,
     get_alert_breakdown,
+    get_data_freshness,
     get_alerts_page,
     get_emotion_distribution,
     get_kpi_metrics,
@@ -88,6 +89,8 @@ if "nav_initialized" not in st.session_state:
     awal = st.query_params.get("halaman")
     if awal in ("Ringkasan", "Ulasan", "Alert"):
         st.session_state.nav_halaman = awal
+    if st.query_params.get("jeda") == "1":
+        st.session_state.paused = True
     st.session_state.nav_initialized = True
 
 paused = st.session_state["paused"]
@@ -101,13 +104,26 @@ def _tanggal_id(nilai: date) -> str:
 
 
 sekarang = datetime.now(ZoneInfo("Asia/Jakarta"))
+freshness = get_data_freshness()
+processed_at = freshness.get("processed_at")
+if processed_at is not None:
+    lag_menit = max(0, int((sekarang - processed_at.astimezone(ZoneInfo("Asia/Jakarta"))).total_seconds() // 60))
+    status_data = "fresh" if lag_menit <= 5 else "warn" if lag_menit <= 15 else "stale"
+    kanan_judul = f"Data terakhir {processed_at.astimezone(ZoneInfo('Asia/Jakarta')):%H:%M}"
+    kanan_sub = "Refresh dijeda" if paused else f"{lag_menit} menit lalu"
+else:
+    status_data = "stale"
+    kanan_judul = "Belum ada data"
+    kanan_sub = "Refresh dijeda" if paused else "Menunggu pipeline"
+
 topbar(
     "ASUS Official Shop",
     f"{_tanggal_id(st.session_state.filter_date_from)} s.d. {_tanggal_id(st.session_state.filter_date_to)}",
     "Realtime Review Intelligence",
-    sekarang.strftime("%H:%M:%S WIB"),
-    "Refresh dijeda" if paused else "Diperbarui otomatis",
+    kanan_judul,
+    kanan_sub,
     paused=paused,
+    status=status_data,
 )
 
 navigasi, kontrol = st.columns([5, 1], vertical_alignment="center")
@@ -141,6 +157,7 @@ with st.container(key="sheet"):
             "Sentimen",
             ["Positive", "Negative"],
             selection_mode="multi",
+            format_func=lambda nilai: "Positif" if nilai == "Positive" else "Negatif",
             key="filter_sentiment",
             on_change=_ensure_sentiment,
         )
@@ -171,6 +188,17 @@ if total_ulasan == 0:
     kosong(
         "Tidak ada ulasan untuk kombinasi filter ini. Longgarkan tanggal, produk, atau sentimen."
     )
+    st.button("Reset filter", key="reset_empty", on_click=_reset_filters)
+    st.caption(
+        "Filter aktif: "
+        + " · ".join(
+            [
+                f"Periode {_tanggal_id(st.session_state.filter_date_from)} s.d. {_tanggal_id(st.session_state.filter_date_to)}",
+                f"Produk {produk_terpilih if produk_terpilih != ALL_PRODUCT else 'semua'}",
+                "Sentimen " + ", ".join("Positif" if v == "Positive" else "Negatif" for v in sentimen_terpilih),
+            ]
+        )
+    )
     st.stop()
 
 
@@ -179,18 +207,20 @@ def halaman_ringkasan(
 ) -> None:
     kolom = st.columns(6, gap="small")
     with kolom[0]:
-        kpi("Total ulasan hari ini", angka(metrics["total_today"]),
-            sub=f"{metrics['total_delta']:+d} vs kemarin")
+        kpi("Total ulasan", angka(metrics["total_range"]),
+            sub=f"{angka(metrics['total_today'])} hari ini")
     with kolom[1]:
         kpi("Sentimen negatif", persen(metrics["pct_negative"]), merah=True,
-            sub=f"{metrics['pct_negative_delta']:+.1f} pp vs kemarin".replace(".", ","))
+            sub=f"{angka(metrics['neg_range'])} dari {angka(metrics['total_range'])} ulasan")
     with kolom[2]:
         if metrics["avg_rating_now"] is None:
-            kpi("Rating rata-rata 10 menit", "—", sub="belum ada data")
+            kpi("Rating 10 menit", "—", sub="belum ada data")
         else:
             delta = metrics["avg_rating_delta"]
-            sub = "—" if delta is None else f"{delta:+.2f} vs 10 menit sebelumnya".replace(".", ",")
-            kpi("Rating rata-rata 10 menit", rating(metrics["avg_rating_now"]), sub=sub)
+            bucket = metrics.get("avg_rating_bucket")
+            waktu_bucket = f"bucket {bucket:%H:%M}" if bucket is not None else "bucket terakhir"
+            sub = waktu_bucket if delta is None else f"{waktu_bucket} · {delta:+.2f}".replace(".", ",")
+            kpi("Rating 10 menit", rating(metrics["avg_rating_now"]), sub=sub)
     with kolom[3]:
         kpi("Alert terkirim", angka(metrics["alert_count"]),
             sub=(f"sentimen {angka(alert_counts.get('sentiment_negative', 0))} · "
@@ -199,12 +229,12 @@ def halaman_ringkasan(
         info = model_info.get("sentiment", {})
         kpi("F1 sentimen",
             f"{info.get('f1', 0):.4f}".replace(".", ",") if info.get("f1") is not None else "—",
-            sub=f"model v{info.get('version', '—')}")
+            sub=f"macro F1 · v{info.get('version', '—')}")
     with kolom[5]:
         info = model_info.get("emotion", {})
         kpi("F1 emosi",
             f"{info.get('f1', 0):.4f}".replace(".", ",") if info.get("f1") is not None else "—",
-            sub=f"model v{info.get('version', '—')}")
+            sub=f"macro F1 · v{info.get('version', '—')}")
 
     df_tren = get_time_series_rating(filters)
     with kartu("Tren Rating", "Rata-rata rating per 10 menit"):
@@ -232,6 +262,12 @@ def halaman_ringkasan(
                 st.plotly_chart(
                     chart_emosi(df_emosi), width="stretch", config=PLOT_CONFIG
                 )
+                f1_emo = model_info.get("emotion", {}).get("f1")
+                if f1_emo is not None:
+                    st.caption(
+                        f"F1 emosi {f1_emo:.2f}".replace(".", ",")
+                        + ", kelas Fear dan Sadness paling sering tertukar."
+                    )
 
     with st.expander("Definisi metrik dan sumber data"):
         st.markdown(
@@ -250,10 +286,13 @@ Sumber data adalah ulasan toko yang dipantau, dialirkan lewat Kafka, diproses de
 
 
 def halaman_ulasan(filters: dict, total: int) -> None:
-    df_produk = get_top_products_by_rating(filters)
-    with kartu("Produk Rating Terendah", "Lima produk dengan rating rata-rata terendah"):
+    df_produk = get_top_products_by_rating(filters, min_reviews=2)
+    with kartu(
+        "Produk Rating Terendah",
+        "Minimal 2 ulasan, lima produk dengan rating rata-rata terendah",
+    ):
         if df_produk.empty:
-            kosong("Belum ada data produk.")
+            kosong("Belum ada produk dengan minimal 2 ulasan pada rentang ini.")
         else:
             st.plotly_chart(chart_produk(df_produk), width="stretch", config=PLOT_CONFIG)
 
@@ -272,7 +311,10 @@ def halaman_ulasan(filters: dict, total: int) -> None:
 
 
 def halaman_alert(filters: dict) -> None:
-    with kartu("Ringkasan Alert", "Filter produk dan sentimen tidak memengaruhi halaman ini"):
+    with kartu(
+        "Ringkasan Alert",
+        "Alert penurunan rating tidak terkait ulasan tertentu, jadi selalu dihitung",
+    ):
         stats_alert(
             [
                 ("Sentimen negatif", angka(alert_counts.get("sentiment_negative", 0)), "ulasan pemicu"),

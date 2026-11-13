@@ -49,6 +49,14 @@ def _build_alert_filter(filters: dict, date_column: str = "triggered_at") -> tup
         conditions.append(f"{date_column} < :date_to + INTERVAL '1 day'")
         params["date_to"] = filters["date_to"]
 
+    if filters.get("product"):
+        conditions.append("(a.review_id IS NULL OR r.product_name = :product)")
+        params["product"] = filters["product"]
+
+    if filters.get("sentiment"):
+        conditions.append("(a.review_id IS NULL OR r.sentiment = ANY(:sentiment))")
+        params["sentiment"] = list(filters["sentiment"])
+
     clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     return clause, params
 
@@ -63,30 +71,24 @@ def get_kpi_metrics(filters: dict) -> dict:
             FROM reviews
             {where}
         ),
-        today_window AS (
-            SELECT rating_star, sentiment
+        range_stats AS (
+            SELECT COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE sentiment = 'Negative') AS neg,
+                   COUNT(*) FILTER (WHERE create_time::date = CURRENT_DATE) AS today
             FROM filtered
-            WHERE create_time::date = CURRENT_DATE
         ),
-        yesterday_window AS (
-            SELECT rating_star, sentiment
+        buckets AS (
+            SELECT date_bin('10 minutes', create_time, TIMESTAMP 'epoch') AS bucket,
+                   AVG(rating_star) AS avg_rating
             FROM filtered
-            WHERE create_time::date = CURRENT_DATE - 1
+            GROUP BY 1
         ),
-        last_10min AS (
-            SELECT AVG(rating_star) AS avg_now
-            FROM filtered
-            WHERE create_time >= NOW() - INTERVAL '10 minutes'
-        ),
-        prev_10min AS (
-            SELECT AVG(rating_star) AS avg_prev
-            FROM filtered
-            WHERE create_time >= NOW() - INTERVAL '20 minutes'
-              AND create_time <  NOW() - INTERVAL '10 minutes'
-        ),
+        latest AS (SELECT bucket, avg_rating FROM buckets ORDER BY bucket DESC LIMIT 1),
+        prev AS (SELECT avg_rating FROM buckets ORDER BY bucket DESC OFFSET 1 LIMIT 1),
         alerts_filtered AS (
             SELECT COUNT(*) AS cnt
-            FROM alerts
+            FROM alerts a
+            LEFT JOIN reviews r ON a.review_id = r.id
             {alert_where}
         ),
         active_models AS (
@@ -95,12 +97,12 @@ def get_kpi_metrics(filters: dict) -> dict:
             WHERE is_active = TRUE
         )
         SELECT
-            (SELECT COUNT(*) FROM today_window)                                        AS total_today,
-            (SELECT COUNT(*) FROM yesterday_window)                                    AS total_yesterday,
-            (SELECT COUNT(*) FROM today_window WHERE sentiment = 'Negative')            AS neg_today,
-            (SELECT COUNT(*) FROM yesterday_window WHERE sentiment = 'Negative')        AS neg_yesterday,
-            (SELECT avg_now  FROM last_10min)                                          AS avg_rating_now,
-            (SELECT avg_prev FROM prev_10min)                                          AS avg_rating_prev,
+            (SELECT total FROM range_stats)                                            AS total_range,
+            (SELECT neg FROM range_stats)                                              AS neg_range,
+            (SELECT today FROM range_stats)                                            AS total_today,
+            (SELECT bucket FROM latest)                                                AS bucket,
+            (SELECT avg_rating FROM latest)                                            AS avg_now,
+            (SELECT avg_rating FROM prev)                                              AS avg_prev,
             (SELECT cnt FROM alerts_filtered)                                          AS alert_count,
             (SELECT f1_score_macro FROM active_models WHERE task_type = 'sentiment')   AS f1_sentiment,
             (SELECT f1_score_macro FROM active_models WHERE task_type = 'emotion')     AS f1_emotion
@@ -108,29 +110,30 @@ def get_kpi_metrics(filters: dict) -> dict:
     with engine.connect() as conn:
         row = conn.execute(text(sql), {**params, **alert_params}).fetchone()
 
-    total_today     = row[0] or 0
-    total_yesterday = row[1] or 0
-    neg_today       = row[2] or 0
-    neg_yesterday   = row[3] or 0
-    avg_now         = float(row[4]) if row[4] is not None else None
-    avg_prev        = float(row[5]) if row[5] is not None else None
-    alert_count     = row[6] or 0
-    f1_sentiment    = float(row[7]) if row[7] is not None else None
-    f1_emotion      = float(row[8]) if row[8] is not None else None
+    total_range = row[0] or 0
+    neg_range = row[1] or 0
+    total_today = row[2] or 0
+    bucket = row[3]
+    avg_now = float(row[4]) if row[4] is not None else None
+    avg_prev = float(row[5]) if row[5] is not None else None
+    alert_count = row[6] or 0
+    f1_sentiment = float(row[7]) if row[7] is not None else None
+    f1_emotion = float(row[8]) if row[8] is not None else None
 
-    pct_neg_today     = (neg_today     / total_today     * 100) if total_today     > 0 else 0.0
-    pct_neg_yesterday = (neg_yesterday / total_yesterday * 100) if total_yesterday > 0 else 0.0
+    pct_negative = (neg_range / total_range * 100) if total_range > 0 else 0.0
 
     return {
-        "total_today":         total_today,
-        "total_delta":         total_today - total_yesterday,
-        "pct_negative":        pct_neg_today,
-        "pct_negative_delta":  round(pct_neg_today - pct_neg_yesterday, 1),
-        "avg_rating_now":      avg_now,
-        "avg_rating_delta":    round(avg_now - avg_prev, 2) if avg_now is not None and avg_prev is not None else None,
-        "alert_count":         alert_count,
-        "f1_sentiment":        f1_sentiment,
-        "f1_emotion":          f1_emotion,
+        "total_range": total_range,
+        "neg_range": neg_range,
+        "total_today": total_today,
+        "pct_negative": pct_negative,
+        "avg_rating_now": avg_now,
+        "avg_rating_prev": avg_prev,
+        "avg_rating_delta": round(avg_now - avg_prev, 2) if avg_now is not None and avg_prev is not None else None,
+        "avg_rating_bucket": bucket,
+        "alert_count": alert_count,
+        "f1_sentiment": f1_sentiment,
+        "f1_emotion": f1_emotion,
     }
 
 
@@ -194,7 +197,9 @@ def get_emotion_distribution(filters: dict) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=10)
-def get_top_products_by_rating(filters: dict, limit: int = 5) -> pd.DataFrame:
+def get_top_products_by_rating(
+    filters: dict, limit: int = 5, min_reviews: int = 2
+) -> pd.DataFrame:
     where, params = _build_review_filter(filters)
     sql = f"""
         SELECT
@@ -205,10 +210,12 @@ def get_top_products_by_rating(filters: dict, limit: int = 5) -> pd.DataFrame:
         FROM reviews
         {where}
         GROUP BY product_name
+        HAVING COUNT(*) >= :min_reviews
         ORDER BY avg_rating ASC
         LIMIT :limit
     """
     params["limit"] = limit
+    params["min_reviews"] = min_reviews
     with engine.connect() as conn:
         df = pd.DataFrame(
             conn.execute(text(sql), params).fetchall(),
@@ -315,3 +322,11 @@ def get_alert_breakdown(filters: dict) -> dict:
     with engine.connect() as conn:
         rows = conn.execute(text(sql), params).fetchall()
     return {alert_type: int(total) for alert_type, total in rows}
+
+
+@st.cache_data(ttl=10)
+def get_data_freshness() -> dict:
+    sql = "SELECT MAX(processed_at), MAX(create_time) FROM reviews"
+    with engine.connect() as conn:
+        row = conn.execute(text(sql)).fetchone()
+    return {"processed_at": row[0], "create_time": row[1]}

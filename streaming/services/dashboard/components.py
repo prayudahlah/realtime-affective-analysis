@@ -58,7 +58,9 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 .crm-topbar .right b { display: block; font-size: 0.78rem; color: var(--ink); font-weight: 600; }
 .crm-topbar .live { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
   background: #2E7D4F; margin-right: 5px; vertical-align: middle; }
-.crm-topbar .paused { background: #C0392B; }
+.crm-topbar .live.warn { background: #C58B00; }
+.crm-topbar .live.stale { background: #C0392B; }
+.crm-topbar .live.paused { background: #C0392B; }
 
 .kpi-card {
   background: #FFFFFF;
@@ -127,6 +129,14 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 .def-table td.metric { color: var(--blue); font-weight: 600; white-space: nowrap; }
 
 div[data-testid="stPills"] button { font-size: 0.78rem; }
+
+@media (max-width: 900px) {
+  [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+  [data-testid="column"] { flex: 1 1 46% !important; min-width: 46% !important; }
+  div[data-testid="stPills"] > div { flex-wrap: wrap; }
+  .crm-topbar { grid-template-columns: 1fr; text-align: center; gap: 0.35rem; }
+  .crm-topbar .right { text-align: center; }
+}
 div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stDataFrame"] { border: none; }
 </style>
 """
@@ -143,8 +153,9 @@ def topbar(
     kanan_judul: str,
     kanan_sub: str,
     paused: bool = False,
+    status: str = "fresh",
 ) -> None:
-    kelas = "live paused" if paused else "live"
+    kelas = f"live {status}"
     st.markdown(
         f"""
         <div class="crm-topbar">
@@ -248,9 +259,10 @@ def chart_tren(df: pd.DataFrame) -> go.Figure:
 
 
 def chart_sentimen(df: pd.DataFrame) -> go.Figure:
-    labels = df["sentiment"].tolist()
+    raw = df["sentiment"].tolist()
+    labels = ["Positif" if label == "Positive" else "Negatif" for label in raw]
     values = df["count"].tolist()
-    colors = [SENTIMENT_COLORS.get(label, MUTED) for label in labels]
+    colors = [SENTIMENT_COLORS.get(label, MUTED) for label in raw]
     total = sum(values)
     fig = go.Figure(
         go.Pie(
@@ -290,7 +302,7 @@ def chart_emosi(df: pd.DataFrame) -> go.Figure:
 
 
 def chart_produk(df: pd.DataFrame) -> go.Figure:
-    data = df.sort_values("avg_rating", ascending=True)
+    data = df.sort_values("avg_rating", ascending=False)
     labels = [str(name)[:42] for name in data["product_name"]]
     colors = [RED if value < 4 else BLUE for value in data["avg_rating"]]
     fig = go.Figure(
@@ -299,7 +311,7 @@ def chart_produk(df: pd.DataFrame) -> go.Figure:
             y=labels,
             orientation="h",
             marker=dict(color=colors),
-            text=[rating(v) for v in data["avg_rating"]],
+            text=[f"{rating(v)} · {int(n)}" for v, n in zip(data["avg_rating"], data["total_reviews"])],
             textposition="outside",
             customdata=data["total_reviews"],
             hovertemplate="%{y}<br>Rating %{x:.2f} dari %{customdata} ulasan<extra></extra>",
