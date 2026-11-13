@@ -1,686 +1,408 @@
+from __future__ import annotations
+
+import html
+from contextlib import contextmanager
+from math import ceil
+
 import pandas as pd
-import altair as alt
+import plotly.graph_objects as go
 import streamlit as st
 
 from config import (
-    BG_BASE, BG_SURFACE, BG_ELEVATED, BG_BORDER,
-    ASUS_BLUE, ASUS_BLUE_DIM,
-    ACCENT_RED, ACCENT_RED_DIM, ACCENT_PINK,
-    ACCENT_PURPLE, ACCENT_PURPLE_DIM,
-    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED,
-    ALERT_TYPE_LABELS, SENTIMENT_COLORS, EMOTION_COLORS,
-    RATING_THRESHOLD,
+    ALERT_TYPE_LABELS,
+    BLUE,
+    EMOTION_COLORS,
+    GREEN,
+    INK,
+    INK_SOFT,
+    MUTED,
+    RED,
+    SENTIMENT_COLORS,
 )
 
-def _short_product_name(name):
-    if name and "/" in name:
-        return name.split("/")[0].strip()
-    return name or ""
+CSS = """
+<style>
+:root {
+  --ink: #2F3E4E; --ink-soft: #4A5A6A; --muted: #7A8A9A;
+  --line: #C9D6E2; --blue: #2F6DB5; --red: #C0392B;
+}
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+  background-color: #EDF1F6 !important;
+}
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stAppDeployButton"] { display: none; }
+.block-container { padding: 0.7rem 1.4rem 2.5rem; max-width: 1420px; }
+
+.st-key-sheet {
+  background: #FFFFFF;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem 0.35rem;
+}
+
+.crm-topbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  background: #DCE6F0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.85rem;
+  margin-bottom: 0.55rem;
+}
+.crm-topbar .left { font-size: 0.67rem; color: var(--ink-soft); line-height: 1.25; }
+.crm-topbar .left b { display: block; font-size: 0.78rem; color: var(--ink); font-weight: 600; }
+.crm-topbar .center { font-size: 1.02rem; font-weight: 700; color: var(--ink); }
+.crm-topbar .right { text-align: right; font-size: 0.67rem; color: var(--ink-soft); line-height: 1.25; }
+.crm-topbar .right b { display: block; font-size: 0.78rem; color: var(--ink); font-weight: 600; }
+.crm-topbar .live { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: #2E7D4F; margin-right: 5px; vertical-align: middle; }
+.crm-topbar .paused { background: #C0392B; }
+
+.kpi-card {
+  background: #FFFFFF;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.55rem 0.7rem;
+  text-align: center;
+  height: 100%;
+}
+.kpi-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.12rem; line-height: 1.2; }
+.kpi-value { font-size: 1.4rem; font-weight: 600; color: var(--ink); line-height: 1.15; }
+.kpi-value.red { color: var(--red); }
+.kpi-sub { font-size: 0.72rem; color: var(--ink-soft); margin-top: 0.18rem; min-height: 1.1em; line-height: 1.3; }
+
+.card-title { font-size: 0.82rem; font-weight: 600; color: var(--ink); margin: 0 0 0.15rem; }
+.card-sub { font-size: 0.76rem; color: #5A6B7B; margin: 0 0 0.2rem; }
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  background: #FFFFFF !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 6px !important;
+  padding: 0.5rem 0.7rem 0.35rem !important;
+}
+
+.table-wrap { overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+.data-table th { text-align: left; font-weight: 600; background: #F4F7FB;
+  border-bottom: 1px solid var(--line); padding: 0.42rem 0.5rem; font-size: 0.68rem;
+  text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); white-space: nowrap; }
+.data-table td { border-bottom: 1px solid #E3EAF3; padding: 0.42rem 0.5rem;
+  color: var(--ink-soft); vertical-align: top; line-height: 1.4; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table td.num { text-align: right; white-space: nowrap; color: var(--ink); font-weight: 600; }
+.data-table td.nowrap { white-space: nowrap; }
+.data-table td.prod { max-width: 190px; }
+.data-table td.rev { color: var(--ink); }
+
+.badge { display: inline-block; border-radius: 999px; padding: 1px 8px;
+  font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
+.badge.pos { background: #E3EEF9; color: #2F6DB5; }
+.badge.neg { background: #FBE7E5; color: #C0392B; }
+.badge.happy { background: #E3EEF9; color: #2F6DB5; }
+.badge.love { background: #E4F1E8; color: #2E7D4F; }
+.badge.fear { background: #EDE7F5; color: #7A5AA6; }
+.badge.sadness { background: #E3F0F4; color: #4C8FA8; }
+.badge.anger { background: #FBE7E5; color: #C0392B; }
+
+.page-info { text-align: center; font-size: 0.74rem; color: var(--muted); padding-top: 0.45rem; }
+
+.alert-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin: 0.2rem 0 0.3rem; }
+.alert-stat { background: #F4F7FB; border: 1px solid #E3EAF3; border-radius: 6px; padding: 0.5rem 0.7rem; }
+.alert-stat span { display: block; font-size: 0.72rem; color: #7A8A9A; }
+.alert-stat b { display: block; font-size: 1.25rem; color: #2F3E4E; line-height: 1.2; }
+.alert-stat small { display: block; font-size: 0.7rem; color: #4A5A6A; }
+
+.empty { background: #FFFFFF; border: 1px dashed var(--line); border-radius: 6px;
+  padding: 1.6rem 1rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+
+.def-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.2rem; }
+.def-table th { text-align: left; font-weight: 600; background: #F4F7FB;
+  border-bottom: 1px solid var(--line); padding: 0.42rem 0.55rem; font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); }
+.def-table td { border-bottom: 1px solid #E3EAF3; padding: 0.45rem 0.55rem;
+  vertical-align: top; color: var(--ink-soft); line-height: 1.45; }
+.def-table tr:last-child td { border-bottom: none; }
+.def-table td.metric { color: var(--blue); font-weight: 600; white-space: nowrap; }
+
+div[data-testid="stPills"] button { font-size: 0.78rem; }
+div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stDataFrame"] { border: none; }
+</style>
+"""
 
 
-def _chart_cfg(chart, height=320):
-    return (
-        chart
-        .properties(
-            height=height, background=BG_SURFACE,
-            padding={"left": 28, "top": 20, "right": 28, "bottom": 24},
-            autosize={"type": "fit", "contains": "padding"},
-        )
-        .configure(background=BG_SURFACE)
-        .configure_view(strokeWidth=0, fill=BG_SURFACE)
-        .configure_axis(
-            labelColor=TEXT_SECONDARY,
-            titleColor=TEXT_SECONDARY,
-            gridColor=BG_BORDER,
-            domainColor=BG_BORDER,
-            tickColor=BG_BORDER,
-            labelFont="system-ui, sans-serif",
-            titleFont="system-ui, sans-serif",
-            labelFontSize=11,
-        )
-        .configure_legend(
-            labelColor=TEXT_SECONDARY,
-            titleColor=TEXT_SECONDARY,
-            labelFont="system-ui, sans-serif",
-            titleFont="system-ui, sans-serif",
-            labelFontSize=12,
-        )
-    )
+def inject_css() -> None:
+    st.markdown(CSS, unsafe_allow_html=True)
 
 
-def inject_css():
+def topbar(
+    kiri_judul: str,
+    kiri_sub: str,
+    tengah: str,
+    kanan_judul: str,
+    kanan_sub: str,
+    paused: bool = False,
+) -> None:
+    kelas = "live paused" if paused else "live"
     st.markdown(
         f"""
-        <style>
-        html {{
-            font-size: 17px;
-        }}
-        html, body,
-        [data-testid="stAppViewContainer"],
-        [data-testid="stMain"],
-        .main {{
-            background-color: {BG_BASE} !important;
-            color: {TEXT_PRIMARY};
-        }}
-        header[data-testid="stHeader"] {{
-            background: {BG_SURFACE} !important;
-            border-bottom: 1px solid {BG_BORDER};
-        }}
-        [data-testid="stDecoration"] {{
-            display: none;
-        }}
-        [data-testid="stAppViewContainer"] {{
-            margin-top: -0.75rem;
-        }}
-        [data-testid="stAppViewContainer"] > .main > div {{
-            padding-top: 0;
-        }}
-
-        [data-testid="stSidebar"] {{
-            background-color: {BG_SURFACE} !important;
-            border-right: 1px solid {BG_BORDER};
-        }}
-        [data-testid="stSidebar"] * {{
-            color: {TEXT_PRIMARY} !important;
-        }}
-        [data-testid="stSidebar"] input,
-        [data-testid="stSidebar"] .stDateInput input {{
-            background: {BG_ELEVATED} !important;
-            border: 1px solid {BG_BORDER} !important;
-            color: {TEXT_PRIMARY} !important;
-            border-radius: 6px;
-        }}
-        [data-testid="stSidebar"] input::placeholder {{
-            color: {TEXT_SECONDARY} !important;
-            opacity: 1;
-        }}
-        [data-testid="stSidebar"] .stMultiSelect [data-baseweb="select"] {{
-            background: {BG_ELEVATED} !important;
-            border: 1px solid {BG_BORDER} !important;
-        }}
-        [data-testid="stSidebar"] .stMultiSelect span {{
-            color: {TEXT_PRIMARY} !important;
-        }}
-        [data-testid="stSelectbox"] > div > div {{
-            background: {BG_ELEVATED} !important;
-            border: 1px solid {BG_BORDER} !important;
-            border-radius: 6px;
-        }}
-        [data-testid="stSelectbox"] input {{
-            color: {TEXT_PRIMARY} !important;
-        }}
-        [data-baseweb="popover"] ul {{
-            background: {BG_SURFACE} !important;
-            border: 1px solid {BG_BORDER} !important;
-        }}
-        [data-baseweb="popover"] li {{
-            color: {TEXT_PRIMARY} !important;
-            background: {BG_SURFACE} !important;
-        }}
-        [data-baseweb="popover"] li:hover {{
-            background: {BG_ELEVATED} !important;
-        }}
-
-        [data-testid="stSidebar"] .stButton > button {{
-            background: {ASUS_BLUE} !important;
-            color: #fff !important;
-            border: none;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 0.82rem;
-            letter-spacing: 0.04em;
-            width: 100%;
-        }}
-        [data-testid="stSidebar"] .stButton > button:hover {{
-            background: #1568B0 !important;
-        }}
-
-        .kpi-card {{
-            background: {BG_SURFACE};
-            border: 1px solid {BG_BORDER};
-            border-left: 4px solid {ASUS_BLUE};
-            border-radius: 8px;
-            padding: 1.1rem 1.25rem 1rem;
-            min-height: 114px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }}
-        .kpi-card.danger {{
-            border-left-color: {ACCENT_RED};
-        }}
-        .kpi-label {{
-            font-size: 0.68rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: {TEXT_SECONDARY};
-            margin-bottom: 0.35rem;
-        }}
-        .kpi-value {{
-            font-size: 2rem;
-            font-weight: 700;
-            color: {TEXT_PRIMARY};
-            line-height: 1.1;
-        }}
-        .kpi-delta {{
-            font-size: 0.75rem;
-            font-weight: 500;
-            margin-top: 0.4rem;
-        }}
-        .kpi-delta.up   {{ color: {ASUS_BLUE}; }}
-        .kpi-delta.down {{ color: {ACCENT_RED}; }}
-        .kpi-delta.flat {{ color: {TEXT_MUTED}; }}
-
-        .section-header {{
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            color: {TEXT_SECONDARY};
-            margin-bottom: 0.9rem;
-            padding-bottom: 0.45rem;
-            border-bottom: 2px solid {ASUS_BLUE};
-            display: inline-block;
-        }}
-
-        hr.section-divider {{
-            border: none;
-            border-top: 1px solid {BG_BORDER};
-            margin: 1.8rem 0;
-        }}
-
-        .pagination-info {{
-            font-size: 0.78rem;
-            color: {TEXT_SECONDARY};
-            text-align: right;
-            padding-top: 0.4rem;
-        }}
-
-        .badge {{
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 999px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-        }}
-        .badge-Positive {{
-            background: {ASUS_BLUE_DIM};
-            color: {ASUS_BLUE};
-        }}
-        .badge-Negative {{
-            background: {ACCENT_RED_DIM};
-            color: {ACCENT_RED};
-        }}
-
-
-        .alert-dot {{
-            display: inline-block;
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            margin-right: 8px;
-            vertical-align: middle;
-        }}
-        .alert-dot.rating_drop {{
-            background: {ACCENT_PURPLE};
-        }}
-        .alert-dot.sentiment_negative {{
-            background: {ACCENT_RED};
-        }}
-
-
-        .review-row {{
-            background: {BG_SURFACE};
-            border: 1px solid {BG_BORDER};
-            border-radius: 6px;
-            padding: 0.6rem 0.8rem;
-            margin-bottom: 0.4rem;
-        }}
-        .review-row.positive {{
-            border-left: 3px solid {ASUS_BLUE};
-        }}
-        .review-row.negative {{
-            border-left: 3px solid {ACCENT_RED};
-        }}
-
-
-        .section-header.model {{
-            border-bottom-color: {ACCENT_PINK};
-        }}
-
-
-        .model-card {{
-            background: {BG_SURFACE};
-            border: 1px solid {BG_BORDER};
-            border-top: 3px solid {ACCENT_PINK};
-            border-radius: 8px;
-            padding: 1rem 1.25rem;
-            min-height: 90px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }}
-        .model-card.sentiment {{
-            border-top-color: {ASUS_BLUE};
-        }}
-        .model-card.emotion {{
-            border-top-color: {ACCENT_PINK};
-        }}
-        .model-label {{
-            font-size: 0.65rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: {TEXT_SECONDARY};
-            margin-bottom: 0.25rem;
-        }}
-        .model-value {{
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: {TEXT_PRIMARY};
-            line-height: 1.1;
-        }}
-
-
-        .stButton > button {{
-            background: {BG_ELEVATED};
-            color: {TEXT_PRIMARY};
-            border: 1px solid {BG_BORDER};
-            border-radius: 6px;
-            font-size: 0.8rem;
-        }}
-        .stButton > button:hover {{
-            background: {BG_BORDER};
-        }}
-        .stButton > button:disabled {{
-            opacity: 0.35;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_header():
-    st.markdown(
-        f"""
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:0;">
-            <div style="width:5px;height:50px;background:{ASUS_BLUE};
-                        border-radius:3px;flex-shrink:0;"></div>
-            <div>
-                <div style="font-size:0.68rem;font-weight:700;letter-spacing:0.1em;
-                            text-transform:uppercase;color:{TEXT_SECONDARY};">
-                    ASUS Indonesia — Shopee Review Intelligence
-                </div>
-                <div style="font-size:1.5rem;font-weight:800;
-                            color:{TEXT_PRIMARY};line-height:1.15;">
-                    Monitoring Sentimen Produk
-                </div>
-            </div>
+        <div class="crm-topbar">
+          <div class="left"><b>{html.escape(kiri_judul)}</b>{html.escape(kiri_sub)}</div>
+          <div class="center">{html.escape(tengah)}</div>
+          <div class="right"><b><span class="{kelas}"></span>{html.escape(kanan_judul)}</b>{html.escape(kanan_sub)}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def _delta_html(value, suffix="", invert=False):
-    if value is None:
-        return f'<span class="kpi-delta flat">— tidak ada data sebelumnya</span>'
-    good = (value > 0 and not invert) or (value < 0 and invert)
-    bad  = (value < 0 and not invert) or (value > 0 and invert)
-    cls  = "up" if good else ("down" if bad else "flat")
-    arrow = "▲" if value > 0 else ("▼" if value < 0 else "—")
-    sign  = "+" if value > 0 else ""
-    return f'<span class="kpi-delta {cls}">{arrow} {sign}{value}{suffix} vs kemarin</span>'
-
-
-def render_kpi_cards(metrics: dict):
-    st.markdown('<div class="section-header">Ringkasan</div>', unsafe_allow_html=True)
-
-    def _card(label, value, delta_html, is_danger, col):
-        cls = "kpi-card danger" if is_danger else "kpi-card"
-        with col:
-            st.markdown(
-                f"""
-                <div class="{cls}">
-                    <div class="kpi-label">{label}</div>
-                    <div class="kpi-value">{value}</div>
-                    {delta_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    row1 = st.columns(4)
-    _card("Total Ulasan Hari Ini", str(metrics["total_today"]),
-          _delta_html(metrics["total_delta"]), False, row1[0])
-    _card("Sentimen Negatif Hari Ini",
-          f"{metrics['pct_negative']:.1f}%",
-          _delta_html(metrics["pct_negative_delta"], suffix="%", invert=True),
-          True, row1[1])
-    _card("Rata-rata Rating (10 mnt)",
-          f"{metrics['avg_rating_now']:.2f}" if metrics['avg_rating_now'] is not None else "—",
-          _delta_html(metrics["avg_rating_delta"]),
-          False, row1[2])
-    _card("Alert Terkirim", str(metrics["alert_count"]), "", True, row1[3])
-
-
-def render_model_cards(metrics: dict):
+def kpi(label: str, value: str, merah: bool = False, sub: str = "") -> None:
+    kelas = "kpi-value red" if merah else "kpi-value"
+    isi_sub = html.escape(sub) if sub else "&nbsp;"
     st.markdown(
-        f'<div class="section-header model">Akurasi Model</div>',
+        f'<div class="kpi-card"><div class="kpi-label">{html.escape(label)}</div>'
+        f'<div class="{kelas}">{html.escape(value)}</div>'
+        f'<div class="kpi-sub">{isi_sub}</div></div>',
         unsafe_allow_html=True,
     )
-    c1, c2, c3, c4 = st.columns(4)
-    sent_val = f"{metrics.get('f1_sentiment'):.4f}" if metrics.get('f1_sentiment') is not None else "—"
-    emo_val  = f"{metrics.get('f1_emotion'):.4f}" if metrics.get('f1_emotion') is not None else "—"
 
-    with c1:
+
+@contextmanager
+def kartu(judul: str, sub: str = ""):
+    with st.container(border=True):
+        sub_html = f'<div class="card-sub">{html.escape(sub)}</div>' if sub else ""
         st.markdown(
-            f"""<div class="model-card sentiment">
-                <div class="model-label">F1 Sentimen</div>
-                <div class="model-value">{sent_val}</div>
-            </div>""",
+            f'<div class="card-title">{html.escape(judul)}</div>{sub_html}',
             unsafe_allow_html=True,
         )
-    with c2:
-        st.markdown(
-            f"""<div class="model-card emotion">
-                <div class="model-label">F1 Emosi</div>
-                <div class="model-value">{emo_val}</div>
-            </div>""",
-            unsafe_allow_html=True,
-        )
+        yield
 
 
-def render_time_series(df: pd.DataFrame):
-    st.markdown('<div class="section-header">Rata-rata Rating per 10 Menit</div>',
-                unsafe_allow_html=True)
-
-    if df.empty:
-        st.info("Belum ada data untuk rentang waktu yang dipilih.")
-    else:
-        try:
-            df["bucket"] = pd.to_datetime(df["bucket"])
-
-            area = alt.Chart(df).mark_area(
-                color=ASUS_BLUE, opacity=0.08, interpolate="monotone",
-            ).encode(
-                x=alt.X("bucket:T"),
-                y=alt.Y("avg_rating:Q", scale=alt.Scale(domain=[1, 5])),
-                y2=alt.Y2(value=1),
-            )
-            line = alt.Chart(df).mark_line(
-                color=ASUS_BLUE, strokeWidth=2.5, interpolate="monotone",
-                point=alt.OverlayMarkDef(color=ASUS_BLUE, size=55, opacity=0.9),
-            ).encode(
-                x=alt.X("bucket:T", title=None,
-                        axis=alt.Axis(format="%d %b %H:%M", labelAngle=-30, tickCount=8)),
-                y=alt.Y("avg_rating:Q", scale=alt.Scale(domain=[1, 5]), title="Rata-rata Rating"),
-                tooltip=[
-                    alt.Tooltip("bucket:T",       title="Waktu",           format="%d %b %H:%M"),
-                    alt.Tooltip("avg_rating:Q",   title="Rata-rata Rating"),
-                    alt.Tooltip("review_count:Q", title="Jumlah Ulasan"),
-                ],
-            )
-
-            chart = _chart_cfg(alt.layer(area, line), height=320)
-            st.altair_chart(chart, width='stretch', theme=None)
-        except Exception as e:
-            st.error(f"Gagal merender grafik: {e}")
+def angka(value: float) -> str:
+    return f"{value:,.0f}".replace(",", ".")
 
 
-def render_sentiment_emotion(df_sent: pd.DataFrame, df_emo: pd.DataFrame):
-    col_l, col_r = st.columns(2, gap="large")
-
-    with col_l:
-        st.markdown('<div class="section-header">Distribusi Sentimen</div>',
-                    unsafe_allow_html=True)
-        if df_sent.empty:
-            st.info("Tidak ada data.")
-        else:
-            domain = list(SENTIMENT_COLORS.keys())
-            rng    = list(SENTIMENT_COLORS.values())
-            donut = (
-                alt.Chart(df_sent)
-                .mark_arc(innerRadius=58, outerRadius=100,
-                          stroke=BG_SURFACE, strokeWidth=2)
-                .encode(
-                    theta=alt.Theta("count:Q"),
-                    color=alt.Color(
-                        "sentiment:N",
-                        scale=alt.Scale(domain=domain, range=rng),
-                        legend=alt.Legend(title=None, orient="bottom", padding=14),
-                    ),
-                    tooltip=[
-                        alt.Tooltip("sentiment:N", title="Sentimen"),
-                        alt.Tooltip("count:Q",     title="Jumlah"),
-                    ],
-                )
-            )
-            st.altair_chart(
-                _chart_cfg(donut, height=300),
-                width='stretch',
-                theme=None,
-            )
-
-    with col_r:
-        st.markdown('<div class="section-header">Distribusi Emosi</div>',
-                    unsafe_allow_html=True)
-        if df_emo.empty:
-            st.info("Tidak ada data.")
-        else:
-            emo_domain = list(EMOTION_COLORS.keys())
-            emo_range  = list(EMOTION_COLORS.values())
-            bar = (
-                alt.Chart(df_emo)
-                .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
-                .encode(
-                    x=alt.X("count:Q", title="Jumlah Ulasan",
-                             axis=alt.Axis(tickMinStep=1)),
-                    y=alt.Y("emotion:N", sort="-x", title=None),
-                    color=alt.Color(
-                        "emotion:N",
-                        scale=alt.Scale(domain=emo_domain, range=emo_range),
-                        legend=None,
-                    ),
-                    tooltip=[
-                        alt.Tooltip("emotion:N", title="Emosi"),
-                        alt.Tooltip("count:Q",   title="Jumlah"),
-                    ],
-                )
-            )
-            st.altair_chart(
-                _chart_cfg(bar, height=300),
-                width='stretch',
-                theme=None,
-            )
+def persen(value: float, desimal: int = 1) -> str:
+    return f"{value:.{desimal}f}".replace(".", ",") + "%"
 
 
-def render_top_products(df: pd.DataFrame):
-    st.markdown('<div class="section-header">Top 5 Produk — Rating Terendah</div>',
-                unsafe_allow_html=True)
-
-    if df.empty:
-        st.info("Tidak ada data produk.")
-        return
-
-    for _, row in df.iterrows():
-        pct_neg   = (row["neg_count"] / row["total_reviews"] * 100) if row["total_reviews"] > 0 else 0
-        low       = row["avg_rating"] < RATING_THRESHOLD
-        bar_color = ACCENT_RED if low else ASUS_BLUE
-        bar_bg    = ACCENT_RED_DIM if low else ASUS_BLUE_DIM
-        bar_width = int(row["avg_rating"] / 5 * 100)
-
-        st.markdown(
-            f"""
-            <div style="background:{BG_SURFACE};border:1px solid {BG_BORDER};
-                        border-radius:8px;padding:0.85rem 1.1rem;margin-bottom:0.55rem;">
-                <div style="display:flex;justify-content:space-between;
-                            align-items:baseline;margin-bottom:0.5rem;">
-                    <span style="font-weight:600;font-size:0.93rem;color:{TEXT_PRIMARY};">
-                        {_short_product_name(row['product_name'])}
-                    </span>
-                    <span style="font-size:0.82rem;color:{TEXT_SECONDARY};">
-                        {row['total_reviews']} ulasan &nbsp;|&nbsp;
-                        <span style="color:{ACCENT_RED};font-weight:600;">
-                            {pct_neg:.0f}% negatif
-                        </span>
-                    </span>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <div style="flex:1;background:{bar_bg};border-radius:999px;
-                                height:7px;overflow:hidden;">
-                        <div style="width:{bar_width}%;height:100%;
-                                    background:{bar_color};border-radius:999px;"></div>
-                    </div>
-                    <span style="font-size:1rem;font-weight:700;
-                                 color:{bar_color};min-width:36px;">
-                        {row['avg_rating']:.2f}
-                    </span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+def rating(value: float) -> str:
+    return f"{value:.2f}".replace(".", ",")
 
 
-def render_reviews_table(df: pd.DataFrame, page: int, total: int, page_size: int):
-    st.markdown('<div class="section-header">Ulasan Terbaru</div>',
-                unsafe_allow_html=True)
-
-    if df.empty:
-        st.info("Tidak ada ulasan untuk filter yang dipilih.")
-        return
-
-    df = df.copy()
-    df["create_time"] = pd.to_datetime(df["create_time"]).dt.strftime("%Y-%m-%d %H:%M")
-
-    for _, row in df.iterrows():
-        sent_class = row["sentiment"].lower()
-        badge = f'<span class="badge badge-{row["sentiment"]}">{row["sentiment"]}</span>'
-        stars = "★" * row["rating_star"] + "☆" * (5 - row["rating_star"])
-        comment_trunc = (row["comment"][:80] + "…") if len(row["comment"]) > 80 else row["comment"]
-
-        st.markdown(
-            f"""
-            <div class="review-row {sent_class}">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-size:0.82rem;font-weight:600;color:{TEXT_PRIMARY};">
-                            {_short_product_name(row["product_name"])}
-                            <span style="font-size:0.7rem;color:{TEXT_MUTED};margin-left:8px;">
-                                {row["create_time"]}
-                            </span>
-                        </div>
-                        <div style="font-size:0.78rem;color:{TEXT_SECONDARY};margin-top:3px;">
-                            {comment_trunc}
-                        </div>
-                    </div>
-                    <div style="text-align:right;flex-shrink:0;min-width:100px;">
-                        <div style="font-size:0.8rem;color:{TEXT_SECONDARY};letter-spacing:1px;">
-                            {stars}
-                        </div>
-                        <div style="margin-top:3px;">
-                            {badge}
-                            <span class="badge" style="background:{BG_ELEVATED};color:{TEXT_SECONDARY};margin-left:4px;">
-                                {row["emotion"]}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    total_pages = max(1, (total + page_size - 1) // page_size)
-    info_col, prev_col, next_col = st.columns([4, 1, 1])
-    with info_col:
-        st.markdown(
-            f'<div class="pagination-info">Halaman {page + 1} dari {total_pages} '
-            f'({total} ulasan)</div>',
-            unsafe_allow_html=True,
-        )
-    with prev_col:
-        if st.button("◀", key="prev_review", disabled=(page == 0), width='stretch'):
-            st.session_state.review_page = page - 1
-            st.rerun()
-    with next_col:
-        if st.button("▶", key="next_review", disabled=(page >= total_pages - 1), width='stretch'):
-            st.session_state.review_page = page + 1
-            st.rerun()
+def waktu(value) -> str:
+    if value is None or pd.isna(value):
+        return "—"
+    return pd.Timestamp(value).strftime("%d/%m %H:%M")
 
 
-def render_alerts_table(df: pd.DataFrame, page: int, total: int, page_size: int):
-    st.markdown('<div class="section-header">Riwayat Alert</div>',
-                unsafe_allow_html=True)
-
-    if df.empty:
-        st.info("Tidak ada alert untuk rentang waktu yang dipilih.")
-        return
-
-    df = df.copy()
-    df["triggered_at"]      = pd.to_datetime(df["triggered_at"]).dt.strftime("%Y-%m-%d %H:%M")
-    df["review_created_at"] = pd.to_datetime(df["review_created_at"]).dt.strftime("%Y-%m-%d %H:%M")
-    df["rating_avg"]        = df["rating_avg"].apply(
-        lambda x: f"{float(x):.2f}" if pd.notna(x) else "—"
+def gaya(fig: go.Figure, tinggi: int = 300, legenda: bool = False) -> go.Figure:
+    fig.update_layout(
+        height=tinggi,
+        margin=dict(l=8, r=18, t=8, b=8),
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
+        font=dict(size=12, color=INK_SOFT, family="Source Sans Pro, system-ui, sans-serif"),
+        showlegend=legenda,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.22, x=0),
+        hoverlabel=dict(bgcolor="#FFFFFF", font_size=12, bordercolor="#C9D6E2"),
+        bargap=0.35,
     )
-    df["review_rating"]     = df["review_rating"].apply(
-        lambda x: str(int(x)) if pd.notna(x) else "—"
+    fig.update_xaxes(
+        showline=True,
+        linecolor="#D5DFE9",
+        tickcolor="#D5DFE9",
+        tickfont=dict(size=11, color=INK_SOFT),
+        title_font=dict(size=11, color=MUTED),
+        gridcolor="#E2EAF3",
+        zeroline=False,
+    )
+    fig.update_yaxes(
+        showline=False,
+        tickcolor="#D5DFE9",
+        tickfont=dict(size=11, color=INK_SOFT),
+        title_font=dict(size=11, color=MUTED),
+        gridcolor="#E2EAF3",
+        zeroline=False,
+    )
+    return fig
+
+
+def chart_tren(df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure(
+        go.Scatter(
+            x=df["bucket"],
+            y=df["avg_rating"],
+            mode="lines+markers",
+            line=dict(color=BLUE, width=2.4),
+            marker=dict(size=5, color=BLUE),
+            fill="tozeroy",
+            fillcolor="rgba(47,109,181,0.10)",
+            hovertemplate="%{x|%d/%m %H:%M}<br>Rating %{y:.2f}<extra></extra>",
+        )
+    )
+    fig.update_yaxes(range=[1, 5], dtick=1)
+    fig.update_xaxes(tickformat="%H:%M", nticks=8)
+    return gaya(fig, tinggi=290)
+
+
+def chart_sentimen(df: pd.DataFrame) -> go.Figure:
+    labels = df["sentiment"].tolist()
+    values = df["count"].tolist()
+    colors = [SENTIMENT_COLORS.get(label, MUTED) for label in labels]
+    total = sum(values)
+    fig = go.Figure(
+        go.Pie(
+            labels=labels,
+            values=values,
+            hole=0.58,
+            sort=False,
+            marker=dict(colors=colors),
+            textinfo="none",
+            hovertemplate="%{label}: %{value} (%{percent})<extra></extra>",
+        )
+    )
+    fig.add_annotation(
+        text=f"<b>{angka(total)}</b><br><span style='font-size:11px'>ulasan</span>",
+        showarrow=False,
+        font=dict(size=18, color=INK),
+    )
+    fig.update_layout(showlegend=True)
+    return gaya(fig, tinggi=260, legenda=True)
+
+
+def chart_emosi(df: pd.DataFrame) -> go.Figure:
+    data = df.sort_values("count", ascending=True)
+    fig = go.Figure(
+        go.Bar(
+            x=data["count"],
+            y=data["emotion"],
+            orientation="h",
+            marker=dict(color=[EMOTION_COLORS.get(label, MUTED) for label in data["emotion"]]),
+            text=data["count"],
+            textposition="outside",
+            hovertemplate="%{y}: %{x} ulasan<extra></extra>",
+        )
+    )
+    fig.update_xaxes(title_text="Jumlah ulasan")
+    return gaya(fig, tinggi=260)
+
+
+def chart_produk(df: pd.DataFrame) -> go.Figure:
+    data = df.sort_values("avg_rating", ascending=True)
+    labels = [str(name)[:42] for name in data["product_name"]]
+    colors = [RED if value < 4 else BLUE for value in data["avg_rating"]]
+    fig = go.Figure(
+        go.Bar(
+            x=data["avg_rating"],
+            y=labels,
+            orientation="h",
+            marker=dict(color=colors),
+            text=[rating(v) for v in data["avg_rating"]],
+            textposition="outside",
+            customdata=data["total_reviews"],
+            hovertemplate="%{y}<br>Rating %{x:.2f} dari %{customdata} ulasan<extra></extra>",
+        )
+    )
+    fig.update_xaxes(range=[0, 5.8], dtick=1, title_text="Rating rata-rata")
+    return gaya(fig, tinggi=max(220, 42 * len(data)))
+
+
+def _badge_sentiment(value: str) -> str:
+    kelas = "pos" if value == "Positive" else "neg"
+    label = "Positif" if value == "Positive" else "Negatif"
+    return f'<span class="badge {kelas}">{label}</span>'
+
+
+def _badge_emotion(value: str) -> str:
+    kelas = str(value).lower()
+    return f'<span class="badge {kelas}">{html.escape(str(value))}</span>'
+
+
+def tabel_ulasan(df: pd.DataFrame) -> None:
+    baris = []
+    for row in df.itertuples(index=False):
+        komentar = html.escape(str(row.comment or "")[:220])
+        produk = html.escape(str(row.product_name or "—")[:60])
+        baris.append(
+            "<tr>"
+            f"<td class='nowrap'>{waktu(row.create_time)}</td>"
+            f"<td class='prod'>{produk}</td>"
+            f"<td class='rev'>{komentar}</td>"
+            f"<td class='num'>{rating(float(row.rating_star))}</td>"
+            f"<td>{_badge_sentiment(row.sentiment)}</td>"
+            f"<td>{_badge_emotion(row.emotion)}</td>"
+            "</tr>"
+        )
+    st.markdown(
+        "<div class='table-wrap'><table class='data-table'>"
+        "<thead><tr><th>Waktu</th><th>Produk</th><th>Ulasan</th><th>Rating</th>"
+        "<th>Sentimen</th><th>Emosi</th></tr></thead>"
+        f"<tbody>{''.join(baris)}</tbody></table></div>",
+        unsafe_allow_html=True,
     )
 
-    for _, row in df.iterrows():
-        alert_label = ALERT_TYPE_LABELS.get(row["alert_type"], row["alert_type"])
-        dot = f'<span class="alert-dot {row["alert_type"]}"></span>'
-        comment_trunc = (row["comment"][:80] + "…") if len(row["comment"]) > 80 else row["comment"]
-        is_rating = row["alert_type"] == "rating_drop"
-        accent = ACCENT_PURPLE if is_rating else ACCENT_RED
-        review_date = row["review_created_at"] if pd.notna(row["review_created_at"]) else row["triggered_at"]
-        rating_display = row["rating_avg"] if is_rating else row["review_rating"]
 
+def tabel_alert(df: pd.DataFrame) -> None:
+    baris = []
+    for row in df.itertuples(index=False):
+        tipe = ALERT_TYPE_LABELS.get(row.alert_type, row.alert_type)
+        komentar = html.escape(str(row.comment or "")[:220])
+        produk = html.escape(str(row.product_name or "—")[:50])
+        nilai = "—"
+        if row.review_rating is not None and not pd.isna(row.review_rating):
+            nilai = rating(float(row.review_rating))
+        elif row.rating_avg is not None and not pd.isna(row.rating_avg):
+            nilai = "avg " + rating(float(row.rating_avg))
+        baris.append(
+            "<tr>"
+            f"<td class='nowrap'>{waktu(row.triggered_at)}</td>"
+            f"<td class='nowrap'>{html.escape(str(tipe))}</td>"
+            f"<td class='prod'>{produk}</td>"
+            f"<td class='rev'>{komentar}</td>"
+            f"<td class='num'>{nilai}</td>"
+            "</tr>"
+        )
+    st.markdown(
+        "<div class='table-wrap'><table class='data-table'>"
+        "<thead><tr><th>Waktu</th><th>Tipe</th><th>Produk</th><th>Ulasan</th>"
+        "<th>Rating</th></tr></thead>"
+        f"<tbody>{''.join(baris)}</tbody></table></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def pagination(key: str, page: int, total: int, size: int) -> tuple[bool, bool]:
+    halaman_total = max(1, ceil(total / size)) if total else 1
+    kiri, tengah, kanan = st.columns([1, 2, 1])
+    with kiri:
+        sebelumnya = st.button(
+            "Sebelumnya", key=f"{key}_prev", disabled=page <= 0, width="stretch"
+        )
+    with tengah:
         st.markdown(
-            f"""
-            <div class="review-row" style="border-left-color:{accent};">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-size:0.82rem;font-weight:600;color:{TEXT_PRIMARY};">
-                            {dot}{alert_label}
-                            <span style="font-size:0.7rem;color:{TEXT_MUTED};margin-left:8px;">
-                                {review_date}
-                            </span>
-                        </div>
-                        <div style="font-size:0.72rem;font-weight:500;color:{ASUS_BLUE};margin-top:2px;">
-                            {_short_product_name(row["product_name"])}
-                        </div>
-                        <div style="font-size:0.78rem;color:{TEXT_SECONDARY};margin-top:3px;">
-                            {comment_trunc}
-                        </div>
-                    </div>
-                    <div style="text-align:right;flex-shrink:0;">
-                        <span style="font-size:0.9rem;font-weight:700;color:{accent};">
-                            rating: {rating_display}
-                        </span>
-                    </div>
-                </div>
-            </div>
-            """,
+            f"<div class='page-info'>Halaman {page + 1} dari {halaman_total}</div>",
             unsafe_allow_html=True,
         )
-
-    total_pages = max(1, (total + page_size - 1) // page_size)
-    info_col, prev_col, next_col = st.columns([4, 1, 1])
-    with info_col:
-        st.markdown(
-            f'<div class="pagination-info">Halaman {page + 1} dari {total_pages} '
-            f'({total} alert)</div>',
-            unsafe_allow_html=True,
+    with kanan:
+        berikutnya = st.button(
+            "Berikutnya",
+            key=f"{key}_next",
+            disabled=page >= halaman_total - 1,
+            width="stretch",
         )
-    with prev_col:
-        if st.button("◀", key="prev_alert", disabled=(page == 0), width='stretch'):
-            st.session_state.alert_page = page - 1
-            st.rerun()
-    with next_col:
-        if st.button("▶", key="next_alert", disabled=(page >= total_pages - 1), width='stretch'):
-            st.session_state.alert_page = page + 1
-            st.rerun()
+    return sebelumnya, berikutnya
+
+
+def stats_alert(items: list[tuple[str, str, str]]) -> None:
+    isi = "".join(
+        f"<div class='alert-stat'><span>{html.escape(label)}</span>"
+        f"<b>{html.escape(value)}</b><small>{html.escape(sub)}</small></div>"
+        for label, value, sub in items
+    )
+    st.markdown(f"<div class='alert-stats'>{isi}</div>", unsafe_allow_html=True)
+
+
+def kosong(pesan: str) -> None:
+    st.markdown(f"<div class='empty'>{html.escape(pesan)}</div>", unsafe_allow_html=True)

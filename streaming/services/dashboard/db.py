@@ -8,7 +8,7 @@ DB_PASSWORD = os.getenv("INFERENCE_DB_PASSWORD", "postgres")
 DB_HOST     = os.getenv("INFERENCE_DB_HOST",     "postgres")
 DB_PORT     = int(os.getenv("INFERENCE_DB_HOST_PORT", "5432"))
 DB_NAME     = os.getenv("INFERENCE_DB_NAME",     "postgres")
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 engine = create_engine(DATABASE_URL)
 
@@ -247,7 +247,7 @@ def get_total_reviews_count(filters: dict) -> int:
 
 
 def get_alerts_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFrame:
-    where, params = _build_alert_filter(filters, date_column="r.create_time")
+    where, params = _build_alert_filter(filters, date_column="a.triggered_at")
     params["limit"]  = limit
     params["offset"] = offset
     sql = f"""
@@ -270,7 +270,7 @@ def get_alerts_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFr
 
 
 def get_total_alerts_count(filters: dict) -> int:
-    where, params = _build_alert_filter(filters, date_column="r.create_time")
+    where, params = _build_alert_filter(filters, date_column="a.triggered_at")
     sql = f"""
         SELECT COUNT(*)
         FROM alerts a
@@ -286,3 +286,32 @@ def get_products() -> list[str]:
     with engine.connect() as conn:
         rows = conn.execute(text(sql)).fetchall()
     return [row[0] for row in rows]
+
+@st.cache_data(ttl=10)
+def get_active_models() -> dict:
+    sql = """
+        SELECT task_type, version, f1_score_macro
+        FROM model_metadata
+        WHERE is_active = TRUE
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql)).fetchall()
+    return {
+        task: {"version": version, "f1": float(f1) if f1 is not None else None}
+        for task, version, f1 in rows
+    }
+
+
+@st.cache_data(ttl=10)
+def get_alert_breakdown(filters: dict) -> dict:
+    where, params = _build_alert_filter(filters, date_column="a.triggered_at")
+    sql = f"""
+        SELECT a.alert_type, COUNT(*) AS total
+        FROM alerts a
+        LEFT JOIN reviews r ON a.review_id = r.id
+        {where}
+        GROUP BY a.alert_type
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+    return {alert_type: int(total) for alert_type, total in rows}

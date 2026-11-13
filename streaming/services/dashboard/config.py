@@ -1,49 +1,37 @@
-BG_BASE       = "#F4F6F9"
-BG_SURFACE    = "#FFFFFF"
-BG_ELEVATED   = "#EBEEF2"
-BG_BORDER     = "#D0D5DD"
+BG_BASE = "#EDF1F6"
+BG_SURFACE = "#FFFFFF"
+BG_SOFT = "#DCE6F0"
+BG_BORDER = "#C9D6E2"
 
-ASUS_BLUE     = "#1A7FD4"
-ASUS_BLUE_DIM = "#D6E8FB"
+INK = "#2F3E4E"
+MUTED = "#7A8A9A"
+INK_SOFT = "#4A5A6A"
 
-ACCENT_RED     = "#F05252"
-ACCENT_RED_DIM = "#FDE2E2"
-ACCENT_PURPLE  = "#818CF8"
-ACCENT_PURPLE_DIM = "#E0DFFE"
-ACCENT_PINK    = "#F472B6"
-ACCENT_PINK_DIM= "#FCE4EC"
-
-TEXT_PRIMARY   = "#1A1D24"
-TEXT_SECONDARY = "#5A6573"
-TEXT_MUTED     = "#9CA3AF"
-
-EMOTION_COLORS = {
-    "Happy":   "#1A7FD4",
-    "Love":    "#2EA043",
-    "Fear":    "#F472B6",
-    "Sadness": "#B794F4",
-    "Anger":   "#F05252",
-}
+BLUE = "#2F6DB5"
+BLUE_DARK = "#1E4E86"
+RED = "#C0392B"
+GREEN = "#2E7D4F"
+PURPLE = "#7A5AA6"
+TEAL = "#4C8FA8"
 
 SENTIMENT_COLORS = {
-    "Positive": ASUS_BLUE,
-    "Negative": ACCENT_RED,
+    "Positive": BLUE,
+    "Negative": RED,
 }
 
-MODEL_TASK_LABELS = {
-    "sentiment": "F1 Sentimen",
-    "emotion":   "F1 Emosi",
-}
-
-MODEL_TASK_COLORS = {
-    "sentiment": ASUS_BLUE,
-    "emotion":   ACCENT_PINK,
+EMOTION_COLORS = {
+    "Happy": BLUE,
+    "Love": GREEN,
+    "Fear": PURPLE,
+    "Sadness": TEAL,
+    "Anger": RED,
 }
 
 ALERT_TYPE_LABELS = {
-    "rating_drop":        "Penurunan Rating",
+    "rating_drop": "Penurunan Rating",
     "sentiment_negative": "Sentimen Negatif",
 }
 
-RATING_THRESHOLD = 4.0
-PAGE_SIZE        = 5
+ALL_PRODUCT = "__all__"
+PAGE_SIZE = 6
+AUTO_REFRESH_MS = 5000
