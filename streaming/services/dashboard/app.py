@@ -71,7 +71,12 @@ def _reset_filters() -> None:
 
 
 def _sinkron_halaman() -> None:
-    st.query_params["halaman"] = st.session_state.nav_halaman
+    if st.session_state.get("nav_halaman"):
+        st.query_params["halaman"] = st.session_state.nav_halaman
+
+
+def _sinkron_jeda() -> None:
+    st.query_params["jeda"] = "1" if st.session_state.paused else "0"
 
 
 def _ensure_sentiment() -> None:
@@ -107,6 +112,8 @@ sekarang = datetime.now(ZoneInfo("Asia/Jakarta"))
 freshness = get_data_freshness()
 processed_at = freshness.get("processed_at")
 if processed_at is not None:
+    if processed_at.tzinfo is None:
+        processed_at = processed_at.replace(tzinfo=ZoneInfo("Asia/Jakarta"))
     lag_menit = max(0, int((sekarang - processed_at.astimezone(ZoneInfo("Asia/Jakarta"))).total_seconds() // 60))
     status_data = "fresh" if lag_menit <= 5 else "warn" if lag_menit <= 15 else "stale"
     kanan_judul = f"Data terakhir {processed_at.astimezone(ZoneInfo('Asia/Jakarta')):%H:%M}"
@@ -136,7 +143,7 @@ with navigasi:
         on_change=_sinkron_halaman,
     )
 with kontrol:
-    st.toggle("Jeda refresh", key="paused")
+    st.toggle("Jeda refresh", key="paused", on_change=_sinkron_jeda)
 
 with st.container(key="sheet"):
     c1, c2, c3, c4, c5 = st.columns([1.0, 1.0, 1.7, 1.2, 0.7], vertical_alignment="bottom")
@@ -172,6 +179,11 @@ filters = {
     "product": None if produk_terpilih == ALL_PRODUCT else produk_terpilih,
     "sentiment": sentimen_terpilih,
 }
+
+if st.session_state.filter_date_from > st.session_state.filter_date_to:
+    kosong("Tanggal awal melewati tanggal akhir. Perbaiki rentang atau tekan Reset.")
+    st.button("Reset filter", key="reset_range", on_click=_reset_filters)
+    st.stop()
 
 filter_key = str(filters)
 if st.session_state.get("_last_filter_key") != filter_key:
@@ -219,7 +231,11 @@ def halaman_ringkasan(
             delta = metrics["avg_rating_delta"]
             bucket = metrics.get("avg_rating_bucket")
             waktu_bucket = f"bucket {bucket:%H:%M}" if bucket is not None else "bucket terakhir"
-            sub = waktu_bucket if delta is None else f"{waktu_bucket} · {delta:+.2f}".replace(".", ",")
+            sub = (
+                waktu_bucket
+                if delta is None
+                else f"{waktu_bucket} · {delta:+.2f} vs sebelumnya".replace(".", ",")
+            )
             kpi("Rating 10 menit", rating(metrics["avg_rating_now"]), sub=sub)
     with kolom[3]:
         kpi("Alert terkirim", angka(metrics["alert_count"]),
@@ -274,9 +290,9 @@ def halaman_ringkasan(
             """
 | Metrik | Arti |
 |---|---|
-| Total ulasan hari ini | Ulasan yang masuk pada tanggal berjalan, sesuai filter aktif |
-| Sentimen negatif | Persentase ulasan dengan sentimen negatif dari seluruh ulasan terfilter |
-| Rating rata-rata 10 menit | Rata-rata rating ulasan pada 10 menit terakhir, dibanding 10 menit sebelumnya |
+| Total ulasan | Ulasan pada rentang filter aktif, dengan jumlah hari ini sebagai keterangan |
+| Sentimen negatif | Persentase ulasan negatif dari seluruh ulasan pada rentang filter |
+| Rating bucket terakhir | Rata-rata rating pada bucket 10 menit terakhir yang memiliki data, dibanding bucket sebelumnya |
 | Alert terkirim | Notifikasi yang dipicu oleh sentimen negatif atau penurunan rating |
 | F1 sentimen dan emosi | Macro F1 model aktif pada data uji, diambil dari metadata model |
 

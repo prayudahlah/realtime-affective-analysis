@@ -265,7 +265,7 @@ def get_alerts_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFr
         FROM alerts a
         LEFT JOIN reviews r ON a.review_id = r.id
         {where}
-        ORDER BY a.triggered_at DESC
+        ORDER BY a.triggered_at DESC, a.id DESC
         LIMIT :limit OFFSET :offset
     """
     with engine.connect() as conn:

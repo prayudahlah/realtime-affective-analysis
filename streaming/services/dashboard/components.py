@@ -34,10 +34,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 .block-container { padding: 0.7rem 1.4rem 2.5rem; max-width: 1420px; }
 
 .st-key-sheet {
-  background: #FFFFFF;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.7rem 0.9rem 0.35rem;
+  padding: 0.1rem 0 0.2rem;
 }
 
 .crm-topbar {
@@ -69,8 +66,9 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
   padding: 0.55rem 0.7rem;
   text-align: center;
   height: 100%;
+  box-shadow: 0 1px 2px rgba(47, 62, 78, 0.05);
 }
-.kpi-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.12rem; line-height: 1.2; }
+.kpi-label { font-size: 0.72rem; color: #5F7080; margin-bottom: 0.12rem; line-height: 1.2; }
 .kpi-value { font-size: 1.4rem; font-weight: 600; color: var(--ink); line-height: 1.15; }
 .kpi-value.red { color: var(--red); }
 .kpi-sub { font-size: 0.72rem; color: var(--ink-soft); margin-top: 0.18rem; min-height: 1.1em; line-height: 1.3; }
@@ -83,6 +81,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   border: 1px solid var(--line) !important;
   border-radius: 6px !important;
   padding: 0.5rem 0.7rem 0.35rem !important;
+  box-shadow: 0 1px 2px rgba(47, 62, 78, 0.05);
 }
 
 .table-wrap { overflow-x: auto; }
@@ -132,10 +131,11 @@ div[data-testid="stPills"] button { font-size: 0.78rem; }
 
 @media (max-width: 900px) {
   [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
-  [data-testid="column"] { flex: 1 1 46% !important; min-width: 46% !important; }
+  [data-testid="stColumn"] { flex: 1 1 46% !important; min-width: 46% !important; }
   div[data-testid="stPills"] > div { flex-wrap: wrap; }
   .crm-topbar { grid-template-columns: 1fr; text-align: center; gap: 0.35rem; }
   .crm-topbar .right { text-align: center; }
+  div[data-testid="stDateInput"] { min-width: 150px; }
 }
 div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stDataFrame"] { border: none; }
 </style>
@@ -303,7 +303,10 @@ def chart_emosi(df: pd.DataFrame) -> go.Figure:
 
 def chart_produk(df: pd.DataFrame) -> go.Figure:
     data = df.sort_values("avg_rating", ascending=False)
-    labels = [str(name)[:42] for name in data["product_name"]]
+    labels = [
+        str(name) if len(str(name)) <= 40 else str(name)[:39] + "…"
+        for name in data["product_name"]
+    ]
     colors = [RED if value < 4 else BLUE for value in data["avg_rating"]]
     fig = go.Figure(
         go.Bar(
@@ -311,7 +314,10 @@ def chart_produk(df: pd.DataFrame) -> go.Figure:
             y=labels,
             orientation="h",
             marker=dict(color=colors),
-            text=[f"{rating(v)} · {int(n)}" for v, n in zip(data["avg_rating"], data["total_reviews"])],
+            text=[
+                f"{rating(v)} · {int(n)} ulasan"
+                for v, n in zip(data["avg_rating"], data["total_reviews"])
+            ],
             textposition="outside",
             customdata=data["total_reviews"],
             hovertemplate="%{y}<br>Rating %{x:.2f} dari %{customdata} ulasan<extra></extra>",
@@ -335,8 +341,8 @@ def _badge_emotion(value: str) -> str:
 def tabel_ulasan(df: pd.DataFrame) -> None:
     baris = []
     for row in df.itertuples(index=False):
-        komentar = html.escape(str(row.comment or "")[:220])
-        produk = html.escape(str(row.product_name or "—")[:60])
+        komentar = html.escape(_teks(row.comment, "")[:220])
+        produk = html.escape(_teks(row.product_name, "—")[:60])
         baris.append(
             "<tr>"
             f"<td class='nowrap'>{waktu(row.create_time)}</td>"
@@ -356,12 +362,22 @@ def tabel_ulasan(df: pd.DataFrame) -> None:
     )
 
 
+def _teks(value, fallback: str = "—") -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return fallback
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return fallback
+    return text
+
+
 def tabel_alert(df: pd.DataFrame) -> None:
     baris = []
     for row in df.itertuples(index=False):
         tipe = ALERT_TYPE_LABELS.get(row.alert_type, row.alert_type)
-        komentar = html.escape(str(row.comment or "")[:220])
-        produk = html.escape(str(row.product_name or "—")[:50])
+        komentar = html.escape(_teks(row.comment, "Tanpa ulasan terkait")[:220])
+        produk_default = "Semua produk" if row.alert_type == "rating_drop" else "—"
+        produk = html.escape(_teks(row.product_name, produk_default)[:50])
         nilai = "—"
         if row.review_rating is not None and not pd.isna(row.review_rating):
             nilai = rating(float(row.review_rating))
