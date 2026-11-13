@@ -27,9 +27,10 @@ CREATE TABLE IF NOT EXISTS alerts (
 -- TABEL model_metadata
 CREATE TABLE IF NOT EXISTS model_metadata (
     id SERIAL PRIMARY KEY,
-    model_name VARCHAR(100),
+    model_name VARCHAR(100) NOT NULL,
+    version VARCHAR(20) NOT NULL,
     f1_score_macro DECIMAL(5,4),
-    trained_at TIMESTAMP DEFAULT NOW(),
+    trained_at TIMESTAMPTZ DEFAULT NOW(),
     is_active BOOLEAN DEFAULT FALSE,
     task_type VARCHAR(20) NOT NULL DEFAULT 'sentiment'
 );
@@ -40,12 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_reviews_rating_star ON reviews(rating_star);
 CREATE INDEX IF NOT EXISTS idx_alerts_alert_type ON alerts(alert_type);
 CREATE INDEX IF NOT EXISTS idx_alerts_triggered_at ON alerts(triggered_at);
 CREATE INDEX IF NOT EXISTS idx_model_metadata_is_active ON model_metadata(is_active);
-
-INSERT INTO model_metadata (model_name, f1_score_macro, trained_at, is_active, task_type)
-VALUES
-    ('sentiment_v1', 0.9249, '2026-06-20', TRUE, 'sentiment'),
-    ('emotion_v1',   0.67,   '2026-06-20', TRUE, 'emotion')
-ON CONFLICT DO NOTHING;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_model_metadata_version
+    ON model_metadata(model_name, version);
 
 -- Fungsi PL/Python untuk forward alert ke Telegram
 -- Dipanggil oleh trigger trg_forward_alert di tabel alerts

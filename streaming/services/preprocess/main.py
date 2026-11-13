@@ -13,6 +13,8 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
+from bundles import load_active_bundle
+
 ssl._create_default_https_context = ssl._create_unverified_context
 nltk.download("punkt_tab", quiet=True)
 nltk.download("stopwords", quiet=True)
@@ -33,12 +35,7 @@ MONGO_COLLECTION = os.getenv("MONGO_COLLECTION", "reviews")
 SPARK_MASTER_URL = os.getenv("SPARK_MASTER_URL", "spark://spark-master:7077")
 SPARK_TRIGGER_INTERVAL = os.getenv("SPARK_TRIGGER_INTERVAL", "1 seconds")
 CHECKPOINT_DIR = os.getenv("CHECKPOINT_DIR", "/app/data/checkpoint")
-SENTIMENT_VECTORIZER_PATH = os.getenv(
-    "SENTIMENT_VECTORIZER_PATH", "/app/sentiment_vectorizer.joblib"
-)
-EMOTION_VECTORIZER_PATH = os.getenv(
-    "EMOTION_VECTORIZER_PATH", "/app/emotion_vectorizer.joblib"
-)
+MODEL_ROOT = os.getenv("MODEL_ROOT", "/app/models")
 
 
 _stemmer = None
@@ -376,7 +373,6 @@ def main():
         ArrayType,
         FloatType,
     )
-    import joblib
     import pymongo
 
     logger.info("StreamDataPreprocess started (kafka=%s, mongo=%s, spark=%s)", KAFKA_BOOTSTRAP_SERVERS, MONGO_URI, SPARK_MASTER_URL)
@@ -396,35 +392,24 @@ def main():
     slang_dict_bc = spark.sparkContext.broadcast(slang_dict)
     logger.info("[BCAST] Slang dict broadcast (%d entries)", len(slang_dict))
 
-    # Broadcast: TF-IDF vectorizers
-    sentiment_vectorizer_bc = None
-    if os.path.exists(SENTIMENT_VECTORIZER_PATH):
-        vec = joblib.load(SENTIMENT_VECTORIZER_PATH)
-        sentiment_vectorizer_bc = spark.sparkContext.broadcast(vec)
-        logger.info(
-            "[BCAST] Sentiment vectorizer (max_features=%s)",
-            getattr(vec, "max_features", "?"),
-        )
-    else:
-        logger.warning(
-            "Sentiment vectorizer not found at %s — disabled",
-            SENTIMENT_VECTORIZER_PATH,
-        )
-
-    emotion_vectorizer_bc = None
-    if os.path.exists(EMOTION_VECTORIZER_PATH):
-        vec = joblib.load(EMOTION_VECTORIZER_PATH)
-        emotion_vectorizer_bc = spark.sparkContext.broadcast(vec)
-        logger.info(
-            "[BCAST] Emotion vectorizer (max_features=%s, ngram=%s)",
-            getattr(vec, "max_features", "?"),
-            getattr(vec, "ngram_range", "?"),
-        )
-    else:
-        logger.warning(
-            "Emotion vectorizer not found at %s — disabled",
-            EMOTION_VECTORIZER_PATH,
-        )
+    # Broadcast: TF-IDF vectorizers dari bundle berversi
+    sentiment_bundle = load_active_bundle(MODEL_ROOT, "sentiment")
+    emotion_bundle = load_active_bundle(MODEL_ROOT, "emotion")
+    sentiment_vectorizer_bc = spark.sparkContext.broadcast(
+        sentiment_bundle["vectorizer"]
+    )
+    emotion_vectorizer_bc = spark.sparkContext.broadcast(emotion_bundle["vectorizer"])
+    logger.info(
+        "[MODEL] Sentiment v%s (max_features=%s)",
+        sentiment_bundle["version"],
+        getattr(sentiment_bundle["vectorizer"], "max_features", "?"),
+    )
+    logger.info(
+        "[MODEL] Emotion v%s (max_features=%s, ngram=%s)",
+        emotion_bundle["version"],
+        getattr(emotion_bundle["vectorizer"], "max_features", "?"),
+        getattr(emotion_bundle["vectorizer"], "ngram_range", "?"),
+    )
 
 
     basic_schema = StructType(

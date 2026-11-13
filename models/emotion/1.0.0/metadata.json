@@ -228,13 +228,13 @@
   },
   "task": "emotion",
   "version": "1.0.0",
-  "trained_at": "2026-11-13T17:15:22+00:00",
+  "trained_at": "2026-11-13T17:26:31+00:00",
   "environment": {
     "python": "3.12.13",
     "platform": "Linux-7.2.14-arch1-1-x86_64-with-glibc2.44",
-    "scikit-learn": "1.9.0",
-    "numpy": "2.4.6",
-    "scipy": "1.17.1",
+    "scikit-learn": "1.7.2",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
     "imbalanced-learn": "0.14.2"
   }
 }

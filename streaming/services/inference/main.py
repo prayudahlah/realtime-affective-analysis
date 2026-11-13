@@ -3,6 +3,8 @@ import sys
 import logging
 import json
 
+from bundles import load_active_bundle
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
@@ -17,7 +19,7 @@ SPARK_MASTER_URL = os.getenv("SPARK_MASTER_URL", "spark://spark-master:7077")
 SPARK_TRIGGER_INTERVAL = os.getenv("SPARK_TRIGGER_INTERVAL", "1 seconds")
 SPARK_DRIVER_HOST = os.getenv("SPARK_DRIVER_HOST", "127.0.0.1")
 CHECKPOINT_DIR = os.getenv("CHECKPOINT_DIR", "/app/data/checkpoint")
-MODEL_DIR = os.getenv("MODEL_DIR", "/app/models")
+MODEL_ROOT = os.getenv("MODEL_ROOT", "/app/models")
 POSTGRES_HOST = os.getenv("INFERENCE_DB_HOST", "localhost")
 POSTGRES_PORT = int(os.getenv("INFERENCE_DB_HOST_PORT", "5432"))
 POSTGRES_DB = os.getenv("INFERENCE_DB_NAME", "postgres")
@@ -28,8 +30,52 @@ POSTGRES_JDBC_URL = os.getenv(
 POSTGRES_USER = os.getenv("INFERENCE_DB_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("INFERENCE_DB_PASSWORD", "postgres")
 
-SENTIMENT_MODEL_PATH = os.path.join(MODEL_DIR, "sentiment_inference.joblib")
-EMOTION_MODEL_PATH = os.path.join(MODEL_DIR, "emotion_inference.joblib")
+
+def register_model_metadata(bundle: dict) -> None:
+    import psycopg2
+
+    metadata = bundle["metadata"]
+    task = metadata.get("task", "unknown")
+    version = bundle["version"]
+    f1 = metadata.get("metrics", {}).get("holdout", {}).get("f1_macro")
+    trained_at = metadata.get("trained_at")
+    try:
+        conn = psycopg2.connect(
+            host=POSTGRES_HOST,
+            port=POSTGRES_PORT,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+        )
+        try:
+            with conn, conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO model_metadata
+                        (model_name, version, f1_score_macro, trained_at, is_active, task_type)
+                    VALUES (%s, %s, %s, %s, TRUE, %s)
+                    ON CONFLICT (model_name, version) DO UPDATE SET
+                        f1_score_macro = EXCLUDED.f1_score_macro,
+                        trained_at = EXCLUDED.trained_at,
+                        is_active = TRUE,
+                        task_type = EXCLUDED.task_type
+                    """,
+                    (task, version, f1, trained_at, task),
+                )
+                cur.execute(
+                    """
+                    UPDATE model_metadata
+                    SET is_active = FALSE
+                    WHERE task_type = %s
+                      AND (version IS NULL OR version <> %s)
+                    """,
+                    (task, version),
+                )
+        finally:
+            conn.close()
+        logger.info("[MODEL] model_metadata %s v%s tercatat", task, version)
+    except Exception as exc:
+        logger.warning("[MODEL] Gagal mencatat model_metadata: %s", exc)
 
 
 def main():
@@ -55,7 +101,6 @@ def main():
         LongType,
         TimestampType,
     )
-    import joblib
 
     logger.info("StreamMLInference started (kafka=%s, spark=%s, pg=%s)", KAFKA_BOOTSTRAP_SERVERS, SPARK_MASTER_URL, POSTGRES_JDBC_URL)
 
@@ -72,17 +117,28 @@ def main():
     logger.info("[SPARK] Session created")
 
 
-    if not os.path.exists(SENTIMENT_MODEL_PATH):
-        logger.error("Sentiment model not found at %s", SENTIMENT_MODEL_PATH)
-        sys.exit(1)
-    if not os.path.exists(EMOTION_MODEL_PATH):
-        logger.error("Emotion model not found at %s", EMOTION_MODEL_PATH)
-        sys.exit(1)
+    sentiment_bundle = load_active_bundle(MODEL_ROOT, "sentiment")
+    emotion_bundle = load_active_bundle(MODEL_ROOT, "emotion")
+    sentiment_model = sentiment_bundle["model"]
+    emotion_model = emotion_bundle["model"]
+    sentiment_n_features = len(sentiment_bundle["vectorizer"].get_feature_names_out())
+    emotion_n_features = len(emotion_bundle["vectorizer"].get_feature_names_out())
 
-    sentiment_model = joblib.load(SENTIMENT_MODEL_PATH)
-    emotion_model = joblib.load(EMOTION_MODEL_PATH)
-    logger.info("[MODEL] Sentiment: %s", type(sentiment_model).__name__)
-    logger.info("[MODEL] Emotion: %s", type(emotion_model).__name__)
+    register_model_metadata(sentiment_bundle)
+    register_model_metadata(emotion_bundle)
+
+    logger.info(
+        "[MODEL] Sentiment v%s f1=%s fitur=%d",
+        sentiment_bundle["version"],
+        sentiment_bundle["metadata"]["metrics"]["holdout"]["f1_macro"],
+        sentiment_n_features,
+    )
+    logger.info(
+        "[MODEL] Emotion v%s f1=%s fitur=%d",
+        emotion_bundle["version"],
+        emotion_bundle["metadata"]["metrics"]["holdout"]["f1_macro"],
+        emotion_n_features,
+    )
 
     sentiment_bc = spark.sparkContext.broadcast(sentiment_model)
     emotion_bc = spark.sparkContext.broadcast(emotion_model)
@@ -170,7 +226,7 @@ def main():
         s_values = [float(p[1]) for p in sentiment_vec]
         s_vec = csr_matrix(
             (s_values, ([0] * len(s_indices), s_indices)),
-            shape=(1, 1500),
+            shape=(1, sentiment_n_features),
         )
 
         if basic_features and len(basic_features) >= 11:
@@ -187,7 +243,7 @@ def main():
         e_values = [float(p[1]) for p in emotion_vec]
         e_vec = csr_matrix(
             (e_values, ([0] * len(e_indices), e_indices)),
-            shape=(1, 1500),
+            shape=(1, emotion_n_features),
         )
 
         sent_binary = np.array([[1.0 if sent_label == "Positive" else 0.0]])

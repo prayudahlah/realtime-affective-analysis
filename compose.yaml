@@ -127,9 +127,11 @@ services:
       MONGO_COLLECTION: reviews
       SPARK_MASTER_URL: spark://spark-master:7077
       CHECKPOINT_DIR: /app/data/checkpoint
+      MODEL_ROOT: /app/models
     env_file: .env
     volumes:
       - preprocess-data:/app/data
+      - ./models:/app/models:ro,z
 
   spark-master:
     image: docker.io/apache/spark:4.1.2
@@ -274,11 +276,14 @@ services:
       POSTGRES_JDBC_URL: jdbc:postgresql://postgres:5432/${INFERENCE_DB_NAME:-postgres}
       POSTGRES_USER: ${INFERENCE_DB_USER:-postgres}
       POSTGRES_PASSWORD: ${INFERENCE_DB_PASSWORD:-postgres}
-      MODEL_DIR: /app/models
+      INFERENCE_DB_HOST: postgres
+      INFERENCE_DB_HOST_PORT: 5432
+      MODEL_ROOT: /app/models
       CHECKPOINT_DIR: /app/data/checkpoint
     env_file: .env
     volumes:
       - inference-data:/app/data
+      - ./models:/app/models:ro,z
 
   postgres:
     build:
