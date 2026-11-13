@@ -9,17 +9,17 @@ tasks:
   up:
     desc: Jalankan seluruh service pipeline
     cmds:
-      - docker compose -f streaming/compose.yaml --profile demo up -d --build
+      - docker compose up -d --build
 
   down:
     desc: Hentikan seluruh service pipeline
     cmds:
-      - docker compose -f streaming/compose.yaml --profile demo down
+      - docker compose down
 
   logs:
     desc: Ikuti log seluruh service
     cmds:
-      - docker compose -f streaming/compose.yaml --profile demo logs -f
+      - docker compose logs -f
 
   train:
     desc: Latih ulang model dan hasilkan artifact berversi
@@ -31,7 +31,7 @@ tasks:
     desc: Jalankan unit test dan validasi compose
     cmds:
       - task: test-ml
-      - docker compose -f streaming/compose.yaml config --quiet
+      - docker compose -f compose.test.yaml config --quiet
 
   test-ml:
     dir: ml
