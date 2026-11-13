@@ -17,7 +17,7 @@ KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "cdc.mongodb.ecommerce.reviews")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID", "ml-inference-group")
 SPARK_MASTER_URL = os.getenv("SPARK_MASTER_URL", "spark://spark-master:7077")
 SPARK_TRIGGER_INTERVAL = os.getenv("SPARK_TRIGGER_INTERVAL", "1 seconds")
-SPARK_DRIVER_HOST = os.getenv("SPARK_DRIVER_HOST", "127.0.0.1")
+SPARK_DRIVER_HOST = os.getenv("SPARK_DRIVER_HOST", "").strip()
 CHECKPOINT_DIR = os.getenv("CHECKPOINT_DIR", "/app/data/checkpoint")
 MODEL_ROOT = os.getenv("MODEL_ROOT", "/app/models")
 POSTGRES_HOST = os.getenv("INFERENCE_DB_HOST", "localhost")
@@ -104,15 +104,17 @@ def main():
 
     logger.info("StreamMLInference started (kafka=%s, spark=%s, pg=%s)", KAFKA_BOOTSTRAP_SERVERS, SPARK_MASTER_URL, POSTGRES_JDBC_URL)
 
-    spark = (
+    spark_builder = (
         SparkSession.builder.appName("StreamMLInference")
         .master(SPARK_MASTER_URL)
         .config("spark.sql.adaptive.enabled", "true")
+        .config("spark.sql.session.timeZone", os.getenv("TZ", "Asia/Jakarta"))
         .config("spark.cores.max", "4")
         .config("spark.driver.bindAddress", "0.0.0.0")
-        .config("spark.driver.host", SPARK_DRIVER_HOST)
-        .getOrCreate()
     )
+    if SPARK_DRIVER_HOST:
+        spark_builder = spark_builder.config("spark.driver.host", SPARK_DRIVER_HOST)
+    spark = spark_builder.getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
     logger.info("[SPARK] Session created")
 

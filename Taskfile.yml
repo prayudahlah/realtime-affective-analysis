@@ -11,10 +11,26 @@ tasks:
     cmds:
       - docker compose up -d --build
 
+  demo:
+    desc: Jalankan demo dengan data replay
+    cmds:
+      - task: up
+      - docker compose ps
+
+  replay:
+    desc: Kirim ulang sampel data ke pipeline
+    cmds:
+      - docker compose restart data-poller
+
   down:
     desc: Hentikan seluruh service pipeline
     cmds:
       - docker compose down
+
+  reset:
+    desc: Hentikan service dan hapus semua volume data
+    cmds:
+      - docker compose down -v
 
   logs:
     desc: Ikuti log seluruh service

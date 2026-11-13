@@ -381,6 +381,7 @@ def main():
         SparkSession.builder.appName("StreamDataPreprocess")
         .master(SPARK_MASTER_URL)
         .config("spark.sql.adaptive.enabled", "true")
+        .config("spark.sql.session.timeZone", os.getenv("TZ", "Asia/Jakarta"))
         .config("spark.cores.max", "2")
         .getOrCreate()
     )

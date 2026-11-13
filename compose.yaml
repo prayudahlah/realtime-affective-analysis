@@ -13,9 +13,15 @@ services:
       SCRAPE_INTERVAL: "10"
       POLL_INTERVAL: "60"
       DATA_DIR: /app/data
+      TZ: ${TZ:-Asia/Jakarta}
+      REPLAY_FILE: ${REPLAY_FILE-/app/sample/reviews_sample.jsonl}
+      REPLAY_INTERVAL: ${REPLAY_INTERVAL:-1.5}
+      REPLAY_LOOP: ${REPLAY_LOOP:-false}
+      REPLAY_SPREAD_SECONDS: ${REPLAY_SPREAD_SECONDS:-600}
     env_file: .env
     volumes:
       - data-poller-data:/app/data
+      - ./data/sample:/app/sample:ro,z
 
   kafka:
     image: docker.io/apache/kafka:4.1.2
@@ -98,6 +104,8 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    ports:
+      - "${KAFKA_UI_PORT:-8082}:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
@@ -128,13 +136,14 @@ services:
       SPARK_MASTER_URL: spark://spark-master:7077
       CHECKPOINT_DIR: /app/data/checkpoint
       MODEL_ROOT: /app/models
+      TZ: ${TZ:-Asia/Jakarta}
     env_file: .env
     volumes:
       - preprocess-data:/app/data
       - ./models:/app/models:ro,z
 
   spark-master:
-    image: docker.io/apache/spark:4.1.2
+    image: docker.io/apache/spark:4.1.4
     restart: unless-stopped
     ports:
       - ${HOST_IP:-127.0.0.1}:${SPARK_APP_UI_HOST_PORT:-4040}:4040
@@ -280,6 +289,7 @@ services:
       INFERENCE_DB_HOST_PORT: 5432
       MODEL_ROOT: /app/models
       CHECKPOINT_DIR: /app/data/checkpoint
+      TZ: ${TZ:-Asia/Jakarta}
     env_file: .env
     volumes:
       - inference-data:/app/data
@@ -290,6 +300,7 @@ services:
       context: ./streaming/docker/postgres
       dockerfile: Containerfile
     restart: unless-stopped
+    command: ["postgres", "-c", "timezone=Asia/Jakarta"]
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./streaming/scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql:z
@@ -298,6 +309,7 @@ services:
       POSTGRES_USER: ${INFERENCE_DB_USER:-postgres}
       POSTGRES_PASSWORD: ${INFERENCE_DB_PASSWORD:-postgres}
       POSTGRES_DB: ${INFERENCE_DB_NAME:-postgres}
+      TZ: ${TZ:-Asia/Jakarta}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
     env_file: .env
@@ -320,6 +332,7 @@ services:
       INFERENCE_DB_PASSWORD: ${INFERENCE_DB_PASSWORD:-postgres}
       INFERENCE_DB_HOST: postgres
       INFERENCE_DB_NAME: ${INFERENCE_DB_NAME:-postgres}
+      TZ: ${TZ:-Asia/Jakarta}
     depends_on:
       postgres:
         condition: service_healthy

@@ -18,6 +18,11 @@ CATCHUP_DELAY           = float(os.getenv("CATCHUP_DELAY", "0.5"))
 CATCHUP_CHECKPOINT_N    = int(os.getenv("CATCHUP_CHECKPOINT_N", "500"))
 CATCHUP_THRESHOLD_SECS  = int(os.getenv("CATCHUP_THRESHOLD_SECS", "3600"))
 
+REPLAY_FILE            = os.getenv("REPLAY_FILE", "").strip()
+REPLAY_INTERVAL        = float(os.getenv("REPLAY_INTERVAL", "1.5"))
+REPLAY_LOOP            = os.getenv("REPLAY_LOOP", "false").lower() == "true"
+REPLAY_SPREAD_SECONDS  = int(os.getenv("REPLAY_SPREAD_SECONDS", "1800"))
+
 METADATA_FILE = os.path.join(DATA_DIR, "latest_metadata.json")
 COOKIES_FILE  = os.path.join(DATA_DIR, "cookies.json")
 
@@ -504,8 +509,59 @@ def scrape_and_produce(producer: KafkaProducer):
         run_realtime(producer, shop_id, user_id, headers, last_ctime, metadata, shop_key)
 
 
+def run_replay(producer: KafkaProducer) -> None:
+    if not os.path.exists(REPLAY_FILE):
+        print(f"[REPLAY] File tidak ditemukan: {REPLAY_FILE}")
+        return
+
+    rows = []
+    with open(REPLAY_FILE, "r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+
+    if not rows:
+        print("[REPLAY] File kosong.")
+        return
+
+    step = REPLAY_SPREAD_SECONDS / max(len(rows), 1)
+    print(f"[REPLAY] Mengirim {len(rows)} ulasan dari {REPLAY_FILE}")
+
+    for index, row in enumerate(rows):
+        ctime = int(time.time()) - int((len(rows) - 1 - index) * step)
+        data = {
+            "nama pengguna": row.get("nama pengguna", "pengguna"),
+            "produk": row.get("produk", "Produk"),
+            "review": row.get("review", ""),
+            "rating": int(row.get("rating", 5)),
+            "waktu transaksi": datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M"),
+            "ctime": ctime,
+        }
+        producer.send(
+            KAFKA_TOPIC,
+            key=str(ctime).encode("utf-8"),
+            value=data,
+        )
+        print(f"[REPLAY] {index + 1}/{len(rows)} {data['produk'][:40]}")
+        time.sleep(REPLAY_INTERVAL)
+
+    producer.flush()
+    print("[REPLAY] Selesai mengirim semua ulasan.")
+
+
 def main():
     producer = init_producer()
+    if REPLAY_FILE:
+        while True:
+            run_replay(producer)
+            if not REPLAY_LOOP:
+                print("[REPLAY] Mode sekali jalan. Container tetap hidup tanpa mengirim ulang.")
+                while True:
+                    time.sleep(3600)
+            print(f"[REPLAY] Mulai putaran berikutnya dalam {POLL_INTERVAL}s...")
+            time.sleep(POLL_INTERVAL)
+
     print(f"[POLLER] Mulai polling setiap {POLL_INTERVAL} detik...\n")
     while True:
         scrape_and_produce(producer)
