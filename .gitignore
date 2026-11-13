@@ -13,6 +13,8 @@ __pycache__/
 storage/
 data/raw/
 data/intermediate/
+ml/data/
+ml/model/
 cookies.json
 latest_metadata.json
 
