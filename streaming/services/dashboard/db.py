@@ -259,7 +259,7 @@ def get_alerts_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFr
     params["offset"] = offset
     sql = f"""
         SELECT a.triggered_at, a.alert_type, a.comment, a.rating_avg,
-               COALESCE(r.product_name, '—') AS product_name,
+               r.product_name AS product_name,
                r.create_time AS review_created_at,
                r.rating_star AS review_rating
         FROM alerts a

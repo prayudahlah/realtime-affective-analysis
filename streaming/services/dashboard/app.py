@@ -219,14 +219,18 @@ def halaman_ringkasan(
 ) -> None:
     kolom = st.columns(6, gap="small")
     with kolom[0]:
-        kpi("Total ulasan", angka(metrics["total_range"]),
-            sub=f"{angka(metrics['total_today'])} hari ini")
+        sub_total = (
+            "seluruhnya hari ini"
+            if metrics["total_today"] == metrics["total_range"]
+            else f"{angka(metrics['total_today'])} hari ini"
+        )
+        kpi("Total ulasan", angka(metrics["total_range"]), sub=sub_total)
     with kolom[1]:
         kpi("Sentimen negatif", persen(metrics["pct_negative"]), merah=True,
             sub=f"{angka(metrics['neg_range'])} dari {angka(metrics['total_range'])} ulasan")
     with kolom[2]:
         if metrics["avg_rating_now"] is None:
-            kpi("Rating 10 menit", "—", sub="belum ada data")
+            kpi("Rating terakhir", "—", sub="belum ada data")
         else:
             delta = metrics["avg_rating_delta"]
             bucket = metrics.get("avg_rating_bucket")
@@ -236,7 +240,7 @@ def halaman_ringkasan(
                 if delta is None
                 else f"{waktu_bucket} · {delta:+.2f} vs sebelumnya".replace(".", ",")
             )
-            kpi("Rating 10 menit", rating(metrics["avg_rating_now"]), sub=sub)
+            kpi("Rating terakhir", rating(metrics["avg_rating_now"]), sub=sub)
     with kolom[3]:
         kpi("Alert terkirim", angka(metrics["alert_count"]),
             sub=(f"sentimen {angka(alert_counts.get('sentiment_negative', 0))} · "
@@ -292,7 +296,7 @@ def halaman_ringkasan(
 |---|---|
 | Total ulasan | Ulasan pada rentang filter aktif, dengan jumlah hari ini sebagai keterangan |
 | Sentimen negatif | Persentase ulasan negatif dari seluruh ulasan pada rentang filter |
-| Rating bucket terakhir | Rata-rata rating pada bucket 10 menit terakhir yang memiliki data, dibanding bucket sebelumnya |
+| Rating terakhir | Rata-rata rating pada bucket 10 menit terakhir yang memiliki data, dibanding bucket sebelumnya |
 | Alert terkirim | Notifikasi yang dipicu oleh sentimen negatif atau penurunan rating |
 | F1 sentimen dan emosi | Macro F1 model aktif pada data uji, diambil dari metadata model |
 

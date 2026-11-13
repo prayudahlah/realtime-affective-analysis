@@ -57,7 +57,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
   background: #2E7D4F; margin-right: 5px; vertical-align: middle; }
 .crm-topbar .live.warn { background: #C58B00; }
 .crm-topbar .live.stale { background: #C0392B; }
-.crm-topbar .live.paused { background: #C0392B; }
+.crm-topbar .live.paused { background: #C58B00; }
 
 .kpi-card {
   background: #FFFFFF;
@@ -155,7 +155,7 @@ def topbar(
     paused: bool = False,
     status: str = "fresh",
 ) -> None:
-    kelas = f"live {status}"
+    kelas = "live paused" if paused else f"live {status}"
     st.markdown(
         f"""
         <div class="crm-topbar">
@@ -294,10 +294,12 @@ def chart_emosi(df: pd.DataFrame) -> go.Figure:
             marker=dict(color=[EMOTION_COLORS.get(label, MUTED) for label in data["emotion"]]),
             text=data["count"],
             textposition="outside",
+            cliponaxis=False,
             hovertemplate="%{y}: %{x} ulasan<extra></extra>",
         )
     )
-    fig.update_xaxes(title_text="Jumlah ulasan")
+    batas = int(data["count"].max() * 1.2) + 1 if not data.empty else 10
+    fig.update_xaxes(title_text="Jumlah ulasan", range=[0, batas])
     return gaya(fig, tinggi=260)
 
 
@@ -319,11 +321,12 @@ def chart_produk(df: pd.DataFrame) -> go.Figure:
                 for v, n in zip(data["avg_rating"], data["total_reviews"])
             ],
             textposition="outside",
+            cliponaxis=False,
             customdata=data["total_reviews"],
             hovertemplate="%{y}<br>Rating %{x:.2f} dari %{customdata} ulasan<extra></extra>",
         )
     )
-    fig.update_xaxes(range=[0, 5.8], dtick=1, title_text="Rating rata-rata")
+    fig.update_xaxes(range=[0, 6.8], dtick=1, title_text="Rating rata-rata")
     return gaya(fig, tinggi=max(220, 42 * len(data)))
 
 
