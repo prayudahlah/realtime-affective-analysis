@@ -111,13 +111,20 @@ div[class*="st-key-card-"] {
 .page-info { text-align: center; font-size: 0.74rem; color: var(--muted); padding-top: 0.45rem; }
 
 .alert-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin: 0.2rem 0 0.3rem; }
-.alert-stat { background: #F4F7FB; border: 1px solid #E3EAF3; border-radius: 6px; padding: 0.5rem 0.7rem; }
+.alert-stat { background: transparent; border: none; border-left: 2px solid #DCE6F0;
+  padding: 0.15rem 0 0.15rem 0.7rem; }
 .alert-stat span { display: block; font-size: 0.72rem; color: #7A8A9A; }
 .alert-stat b { display: block; font-size: 1.25rem; color: #2F3E4E; line-height: 1.2; }
 .alert-stat small { display: block; font-size: 0.7rem; color: #4A5A6A; }
 
-.empty { background: #FFFFFF; border: 1px dashed var(--line); border-radius: 6px;
-  padding: 1.6rem 1rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.empty { padding: 1.1rem 0.75rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.empty.kotak { background: #FFFFFF; border: 1px dashed var(--line); border-radius: 6px;
+  padding: 1.6rem 1rem; }
+
+.delta { font-weight: 600; white-space: nowrap; }
+.delta.up { color: #2E7D4F; }
+.delta.down { color: #C0392B; }
+.delta.flat { color: #7A8A9A; font-weight: 500; }
 
 .def-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.2rem; }
 .def-table th { text-align: left; font-weight: 600; background: #F4F7FB;
@@ -169,9 +176,11 @@ def topbar(
     )
 
 
-def kpi(label: str, value: str, merah: bool = False, sub: str = "") -> None:
+def kpi(
+    label: str, value: str, merah: bool = False, sub: str = "", sub_html: bool = False
+) -> None:
     kelas = "kpi-value red" if merah else "kpi-value"
-    isi_sub = html.escape(sub) if sub else "&nbsp;"
+    isi_sub = (sub if sub_html else html.escape(sub)) if sub else "&nbsp;"
     st.markdown(
         f'<div class="kpi-card"><div class="kpi-label">{html.escape(label)}</div>'
         f'<div class="{kelas}">{html.escape(value)}</div>'
@@ -437,5 +446,22 @@ def stats_alert(items: list[tuple[str, str, str]]) -> None:
     st.markdown(f"<div class='alert-stats'>{isi}</div>", unsafe_allow_html=True)
 
 
-def kosong(pesan: str) -> None:
-    st.markdown(f"<div class='empty'>{html.escape(pesan)}</div>", unsafe_allow_html=True)
+def delta_html(value: float | None, naik_baik: bool = True) -> str:
+    if value is None:
+        return "<span class='delta flat'>–</span>"
+    if abs(value) < 0.005:
+        return "<span class='delta flat'>→ 0,00</span>"
+    naik = value > 0
+    bagus = naik if naik_baik else not naik
+    kelas = "up" if bagus else "down"
+    panah = "↑" if naik else "↓"
+    angka = f"{abs(value):.2f}".replace(".", ",")
+    return (
+        f"<span class='delta {kelas}' title='dibanding bucket sebelumnya'>"
+        f"{panah} {angka}</span>"
+    )
+
+
+def kosong(pesan: str, kotak: bool = False) -> None:
+    kelas = "empty kotak" if kotak else "empty"
+    st.markdown(f"<div class='{kelas}'>{html.escape(pesan)}</div>", unsafe_allow_html=True)

@@ -10,6 +10,7 @@ from components import (
     chart_produk,
     chart_sentimen,
     chart_tren,
+    delta_html,
     inject_css,
     kartu,
     kpi,
@@ -182,7 +183,10 @@ filters = {
 }
 
 if st.session_state.filter_date_from > st.session_state.filter_date_to:
-    kosong("Tanggal awal melewati tanggal akhir. Perbaiki rentang atau tekan Reset.")
+    kosong(
+        "Tanggal awal melewati tanggal akhir. Perbaiki rentang atau tekan Reset.",
+        kotak=True,
+    )
     st.button("Reset filter", key="reset_range", on_click=_reset_filters)
     st.stop()
 
@@ -199,12 +203,13 @@ total_ulasan = get_total_reviews_count(filters)
 
 if total_ulasan == 0:
     kosong(
-        "Tidak ada ulasan untuk kombinasi filter ini. Longgarkan tanggal, produk, atau sentimen."
+        "Tidak ada ulasan untuk kombinasi filter ini. Longgarkan tanggal, produk, atau sentimen.",
+        kotak=True,
     )
     st.button("Reset filter", key="reset_empty", on_click=_reset_filters)
     st.caption(
         "Filter aktif: "
-        + " · ".join(
+        + "; ".join(
             [
                 f"Periode {_tanggal_id(st.session_state.filter_date_from)} s.d. {_tanggal_id(st.session_state.filter_date_to)}",
                 f"Produk {produk_terpilih if produk_terpilih != ALL_PRODUCT else 'semua'}",
@@ -236,26 +241,27 @@ def halaman_ringkasan(
             delta = metrics["avg_rating_delta"]
             bucket = metrics.get("avg_rating_bucket")
             waktu_bucket = f"bucket {bucket:%H:%M}" if bucket is not None else "bucket terakhir"
-            sub = (
-                waktu_bucket
-                if delta is None
-                else f"{waktu_bucket} · {delta:+.2f} vs sebelumnya".replace(".", ",")
+            sub = waktu_bucket if delta is None else f"{waktu_bucket}, {delta_html(delta)}"
+            kpi(
+                "Rating terakhir",
+                rating(metrics["avg_rating_now"]),
+                sub=sub,
+                sub_html=True,
             )
-            kpi("Rating terakhir", rating(metrics["avg_rating_now"]), sub=sub)
     with kolom[3]:
         kpi("Alert terkirim", angka(metrics["alert_count"]),
-            sub=(f"sentimen {angka(alert_counts.get('sentiment_negative', 0))} · "
+            sub=(f"sentimen {angka(alert_counts.get('sentiment_negative', 0))}, "
                  f"rating {angka(alert_counts.get('rating_drop', 0))}"))
     with kolom[4]:
         info = model_info.get("sentiment", {})
         kpi("F1 sentimen",
             f"{info.get('f1', 0):.4f}".replace(".", ",") if info.get("f1") is not None else "—",
-            sub=f"macro F1 · v{info.get('version', '—')}")
+            sub=f"macro F1, v{info.get('version', '—')}")
     with kolom[5]:
         info = model_info.get("emotion", {})
         kpi("F1 emosi",
             f"{info.get('f1', 0):.4f}".replace(".", ",") if info.get("f1") is not None else "—",
-            sub=f"macro F1 · v{info.get('version', '—')}")
+            sub=f"macro F1, v{info.get('version', '—')}")
 
     st.markdown("<div style='height:0.65rem'></div>", unsafe_allow_html=True)
 
@@ -316,12 +322,6 @@ def halaman_ringkasan(
                 st.plotly_chart(
                     chart_emosi(df_emosi), width="stretch", config=PLOT_CONFIG
                 )
-                f1_emo = model_info.get("emotion", {}).get("f1")
-                if f1_emo is not None:
-                    st.caption(
-                        f"F1 emosi {f1_emo:.2f}".replace(".", ",")
-                        + ", kelas Fear dan Sadness paling sering tertukar."
-                    )
 
     with st.expander("Definisi metrik dan sumber data"):
         st.markdown(
@@ -334,7 +334,7 @@ def halaman_ringkasan(
 | Alert terkirim | Notifikasi yang dipicu oleh sentimen negatif atau penurunan rating |
 | F1 sentimen dan emosi | Macro F1 model aktif pada data uji, diambil dari metadata model |
 
-Sumber data adalah ulasan toko yang dipantau, dialirkan lewat Kafka, diproses dengan Spark Structured Streaming, lalu disimpan di PostgreSQL.
+Sumber data: ulasan toko ASUS di Shopee.
             """
         )
 
