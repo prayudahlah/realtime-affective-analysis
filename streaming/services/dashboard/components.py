@@ -85,29 +85,6 @@ div[class*="st-key-card-"] {
   box-shadow: 0 1px 2px rgba(47, 62, 78, 0.05);
 }
 
-.table-wrap { overflow-x: auto; }
-.data-table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
-.data-table th { text-align: left; font-weight: 600; background: #F4F7FB;
-  border-bottom: 1px solid var(--line); padding: 0.42rem 0.5rem; font-size: 0.68rem;
-  text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); white-space: nowrap; }
-.data-table td { border-bottom: 1px solid #E3EAF3; padding: 0.42rem 0.5rem;
-  color: var(--ink-soft); vertical-align: top; line-height: 1.4; }
-.data-table tr:last-child td { border-bottom: none; }
-.data-table td.num { text-align: right; white-space: nowrap; color: var(--ink); font-weight: 600; }
-.data-table td.nowrap { white-space: nowrap; }
-.data-table td.prod { max-width: 190px; }
-.data-table td.rev { color: var(--ink); }
-
-.badge { display: inline-block; border-radius: 999px; padding: 1px 8px;
-  font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
-.badge.pos { background: #E3EEF9; color: #2F6DB5; }
-.badge.neg { background: #FBE7E5; color: #C0392B; }
-.badge.happy { background: #E3EEF9; color: #2F6DB5; }
-.badge.love { background: #E4F1E8; color: #2E7D4F; }
-.badge.fear { background: #EDE7F5; color: #7A5AA6; }
-.badge.sadness { background: #E3F0F4; color: #4C8FA8; }
-.badge.anger { background: #FBE7E5; color: #C0392B; }
-
 .page-info { text-align: center; font-size: 0.74rem; color: var(--muted); padding-top: 0.45rem; }
 
 .alert-stats { width: 100%; border-collapse: collapse; margin: 0.2rem 0 0.3rem; }
@@ -212,12 +189,6 @@ def persen(value: float, desimal: int = 1) -> str:
 
 def rating(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
-
-
-def waktu(value) -> str:
-    if value is None or pd.isna(value):
-        return "—"
-    return pd.Timestamp(value).strftime("%d/%m %H:%M")
 
 
 def gaya(fig: go.Figure, tinggi: int = 300, legenda: bool = False) -> go.Figure:
@@ -342,17 +313,6 @@ def chart_produk(df: pd.DataFrame) -> go.Figure:
     return gaya(fig, tinggi=max(220, 42 * len(data)))
 
 
-def _badge_sentiment(value: str) -> str:
-    kelas = "pos" if value == "Positive" else "neg"
-    label = "Positif" if value == "Positive" else "Negatif"
-    return f'<span class="badge {kelas}">{label}</span>'
-
-
-def _badge_emotion(value: str) -> str:
-    kelas = str(value).lower()
-    return f'<span class="badge {kelas}">{html.escape(str(value))}</span>'
-
-
 SENTIMENT_TAMPIL = {"Positive": "🟢 Positif", "Negative": "🔴 Negatif"}
 EMOTION_TAMPIL = {
     "Happy": "🔵 Happy",
@@ -423,69 +383,6 @@ def dataframe_alert(df: pd.DataFrame) -> None:
             "Rating": st.column_config.TextColumn("Rating", width="small"),
             "Rata-rata": st.column_config.TextColumn("Rata-rata", width="small"),
         },
-    )
-
-
-def tabel_ulasan(df: pd.DataFrame) -> None:
-    baris = []
-    for row in df.itertuples(index=False):
-        komentar = html.escape(_teks(row.comment, "")[:220])
-        produk = html.escape(_teks(row.product_name, "—")[:60])
-        baris.append(
-            "<tr>"
-            f"<td class='nowrap'>{waktu(row.create_time)}</td>"
-            f"<td class='prod'>{produk}</td>"
-            f"<td class='rev'>{komentar}</td>"
-            f"<td class='num'>{rating(float(row.rating_star))}</td>"
-            f"<td>{_badge_sentiment(row.sentiment)}</td>"
-            f"<td>{_badge_emotion(row.emotion)}</td>"
-            "</tr>"
-        )
-    st.markdown(
-        "<div class='table-wrap'><table class='data-table'>"
-        "<thead><tr><th>Waktu</th><th>Produk</th><th>Ulasan</th><th>Rating</th>"
-        "<th>Sentimen</th><th>Emosi</th></tr></thead>"
-        f"<tbody>{''.join(baris)}</tbody></table></div>",
-        unsafe_allow_html=True,
-    )
-
-
-def _teks(value, fallback: str = "—") -> str:
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return fallback
-    text = str(value).strip()
-    if not text or text.lower() == "nan":
-        return fallback
-    return text
-
-
-def tabel_alert(df: pd.DataFrame) -> None:
-    baris = []
-    for row in df.itertuples(index=False):
-        tipe = ALERT_TYPE_LABELS.get(row.alert_type, row.alert_type)
-        komentar = html.escape(_teks(row.comment, "Tanpa ulasan terkait")[:220])
-        produk_default = "Semua produk" if row.alert_type == "rating_drop" else "—"
-        produk = html.escape(_teks(row.product_name, produk_default)[:50])
-        nilai = "—"
-        if row.review_rating is not None and not pd.isna(row.review_rating):
-            nilai = rating(float(row.review_rating))
-        elif row.rating_avg is not None and not pd.isna(row.rating_avg):
-            nilai = "avg " + rating(float(row.rating_avg))
-        baris.append(
-            "<tr>"
-            f"<td class='nowrap'>{waktu(row.triggered_at)}</td>"
-            f"<td class='nowrap'>{html.escape(str(tipe))}</td>"
-            f"<td class='prod'>{produk}</td>"
-            f"<td class='rev'>{komentar}</td>"
-            f"<td class='num'>{nilai}</td>"
-            "</tr>"
-        )
-    st.markdown(
-        "<div class='table-wrap'><table class='data-table'>"
-        "<thead><tr><th>Waktu</th><th>Tipe</th><th>Produk</th><th>Ulasan</th>"
-        "<th>Rating</th></tr></thead>"
-        f"<tbody>{''.join(baris)}</tbody></table></div>",
-        unsafe_allow_html=True,
     )
 
 
