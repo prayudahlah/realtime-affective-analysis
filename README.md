@@ -113,7 +113,14 @@ compose.yaml  orkestrasi seluruh service
 
 ## Asal proyek
 
-Repo ini menggabungkan dua tugas kuliah Semester 4, Rekayasa dan Organisasi Sistem Big Data serta Penambangan Data, lalu dirapikan sebagai portofolio.
+Repo ini menggabungkan dua tugas kuliah Semester 4, lalu dirapikan sebagai portofolio:
+
+- [affective-computing-ecommerce](https://github.com/prayudahlah/affective-computing-ecommerce) untuk Rekayasa dan Organisasi Sistem Big Data. Menjadi dasar pipeline streaming: Kafka, Spark Structured Streaming, MongoDB, Debezium, PostgreSQL, dan Streamlit.
+- [affective_classification_ecommerce](https://github.com/stringptr/affective_classification_ecommerce) untuk Penambangan Data. Menjadi dasar pelatihan model sentimen dan emosi, termasuk notebook eksperimen.
+
+Di repo ini keduanya disatukan, model dilatih ulang dengan protokol yang diperbaiki, lalu artifact dikemas sebagai bundle berversi yang dibaca oleh service streaming.
+
+Anggota kelompok:
 
 - Anindya Artanti Pambudi (L0224002)
 - Prayuda Afifan Handoyo (L0224008)
