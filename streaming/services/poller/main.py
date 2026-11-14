@@ -22,6 +22,7 @@ REPLAY_FILE            = os.getenv("REPLAY_FILE", "").strip()
 REPLAY_INTERVAL        = float(os.getenv("REPLAY_INTERVAL", "1.5"))
 REPLAY_LOOP            = os.getenv("REPLAY_LOOP", "false").lower() == "true"
 REPLAY_SPREAD_SECONDS  = int(os.getenv("REPLAY_SPREAD_SECONDS", "1800"))
+REPLAY_MARKER          = os.path.join(DATA_DIR, "replay_done")
 
 METADATA_FILE = os.path.join(DATA_DIR, "latest_metadata.json")
 COOKIES_FILE  = os.path.join(DATA_DIR, "cookies.json")
@@ -553,9 +554,16 @@ def run_replay(producer: KafkaProducer) -> None:
 def main():
     producer = init_producer()
     if REPLAY_FILE:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        if os.path.exists(REPLAY_MARKER):
+            print("[REPLAY] Sampel sudah pernah dikirim. Jalankan task replay untuk mengirim ulang.")
+            while True:
+                time.sleep(3600)
         while True:
             run_replay(producer)
             if not REPLAY_LOOP:
+                with open(REPLAY_MARKER, "w", encoding="utf-8") as handle:
+                    handle.write("done\n")
                 print("[REPLAY] Mode sekali jalan. Container tetap hidup tanpa mengirim ulang.")
                 while True:
                     time.sleep(3600)

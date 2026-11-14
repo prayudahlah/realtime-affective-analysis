@@ -236,15 +236,46 @@ def get_top_products_by_rating(
 
 
 
-def get_reviews_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFrame:
+def _append(where: str, condition: str) -> str:
+    return f"{where} AND {condition}" if where else f"WHERE {condition}"
+
+
+REVIEW_SORT = {
+    "Terbaru": ("create_time", "DESC"),
+    "Rating terendah": ("rating_star", "ASC"),
+    "Rating tertinggi": ("rating_star", "DESC"),
+    "Produk A-Z": ("product_name", "ASC"),
+}
+
+ALERT_SORT = {
+    "Terbaru": ("a.triggered_at", "DESC"),
+    "Terlama": ("a.triggered_at", "ASC"),
+}
+
+
+def get_reviews_page(
+    filters: dict,
+    limit: int = 10,
+    offset: int = 0,
+    search: str = "",
+    emotions: list[str] | None = None,
+    sort: str = "Terbaru",
+) -> pd.DataFrame:
     where, params = _build_review_filter(filters)
-    params["limit"]  = limit
+    if search:
+        where = _append(where, "(comment ILIKE :search OR product_name ILIKE :search)")
+        params["search"] = f"%{search}%"
+    if emotions:
+        where = _append(where, "emotion = ANY(:emotions)")
+        params["emotions"] = list(emotions)
+    kolom, arah = REVIEW_SORT.get(sort, REVIEW_SORT["Terbaru"])
+    params["limit"] = limit
     params["offset"] = offset
     sql = f"""
         SELECT create_time, product_name, comment, rating_star, sentiment, emotion
         FROM reviews
         {where}
-        ORDER BY create_time DESC
+        ORDER BY {kolom} {arah}, create_time DESC
         LIMIT :limit OFFSET :offset
     """
     with engine.connect() as conn:
@@ -255,17 +286,42 @@ def get_reviews_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataF
     return df
 
 
-def get_total_reviews_count(filters: dict) -> int:
+def get_total_reviews_count(
+    filters: dict, search: str = "", emotions: list[str] | None = None
+) -> int:
     where, params = _build_review_filter(filters)
+    if search:
+        where = _append(where, "(comment ILIKE :search OR product_name ILIKE :search)")
+        params["search"] = f"%{search}%"
+    if emotions:
+        where = _append(where, "emotion = ANY(:emotions)")
+        params["emotions"] = list(emotions)
     sql = f"SELECT COUNT(*) FROM reviews {where}"
     with engine.connect() as conn:
         return conn.execute(text(sql), params).scalar() or 0
 
 
 
-def get_alerts_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFrame:
+def get_alerts_page(
+    filters: dict,
+    limit: int = 10,
+    offset: int = 0,
+    search: str = "",
+    types: list[str] | None = None,
+    sort: str = "Terbaru",
+) -> pd.DataFrame:
     where, params = _build_alert_filter(filters, date_column="a.triggered_at")
-    params["limit"]  = limit
+    if search:
+        where = _append(
+            where,
+            "(a.comment ILIKE :search OR r.product_name ILIKE :search)",
+        )
+        params["search"] = f"%{search}%"
+    if types:
+        where = _append(where, "a.alert_type = ANY(:types)")
+        params["types"] = list(types)
+    kolom, arah = ALERT_SORT.get(sort, ALERT_SORT["Terbaru"])
+    params["limit"] = limit
     params["offset"] = offset
     sql = f"""
         SELECT a.triggered_at, a.alert_type, a.comment, a.rating_avg,
@@ -275,7 +331,7 @@ def get_alerts_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFr
         FROM alerts a
         LEFT JOIN reviews r ON a.review_id = r.id
         {where}
-        ORDER BY a.triggered_at DESC, a.id DESC
+        ORDER BY {kolom} {arah}, a.id DESC
         LIMIT :limit OFFSET :offset
     """
     with engine.connect() as conn:
@@ -286,8 +342,19 @@ def get_alerts_page(filters: dict, limit: int = 5, offset: int = 0) -> pd.DataFr
     return df
 
 
-def get_total_alerts_count(filters: dict) -> int:
+def get_total_alerts_count(
+    filters: dict, search: str = "", types: list[str] | None = None
+) -> int:
     where, params = _build_alert_filter(filters, date_column="a.triggered_at")
+    if search:
+        where = _append(
+            where,
+            "(a.comment ILIKE :search OR r.product_name ILIKE :search)",
+        )
+        params["search"] = f"%{search}%"
+    if types:
+        where = _append(where, "a.alert_type = ANY(:types)")
+        params["types"] = list(types)
     sql = f"""
         SELECT COUNT(*)
         FROM alerts a

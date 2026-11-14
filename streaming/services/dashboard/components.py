@@ -352,6 +352,79 @@ def _badge_emotion(value: str) -> str:
     return f'<span class="badge {kelas}">{html.escape(str(value))}</span>'
 
 
+SENTIMENT_TAMPIL = {"Positive": "🟢 Positif", "Negative": "🔴 Negatif"}
+EMOTION_TAMPIL = {
+    "Happy": "🔵 Happy",
+    "Love": "🟢 Love",
+    "Fear": "🟣 Fear",
+    "Sadness": "🟤 Sadness",
+    "Anger": "🔴 Anger",
+}
+
+
+def _rating_teks(value) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return f"{float(value):.2f}".replace(".", ",")
+
+
+def dataframe_ulasan(df: pd.DataFrame) -> None:
+    tabel = pd.DataFrame(
+        {
+            "Waktu": pd.to_datetime(df["create_time"]),
+            "Produk": df["product_name"],
+            "Ulasan": df["comment"],
+            "Rating": df["rating_star"].map(_rating_teks),
+            "Sentimen": df["sentiment"].map(SENTIMENT_TAMPIL).fillna(df["sentiment"]),
+            "Emosi": df["emotion"].map(EMOTION_TAMPIL).fillna(df["emotion"]),
+        }
+    )
+    st.dataframe(
+        tabel,
+        hide_index=True,
+        width="stretch",
+        height=min(430, 38 + 36 * len(tabel)),
+        column_config={
+            "Waktu": st.column_config.DatetimeColumn("Waktu", format="DD/MM HH:mm"),
+            "Produk": st.column_config.TextColumn("Produk", width="medium"),
+            "Ulasan": st.column_config.TextColumn("Ulasan", width="large"),
+            "Rating": st.column_config.TextColumn("Rating", width="small"),
+            "Sentimen": st.column_config.TextColumn("Sentimen", width="small"),
+            "Emosi": st.column_config.TextColumn("Emosi", width="small"),
+        },
+    )
+
+
+def dataframe_alert(df: pd.DataFrame) -> None:
+    tipe = df["alert_type"].map(ALERT_TYPE_LABELS).fillna(df["alert_type"])
+    produk = df["product_name"].fillna("Semua produk")
+    komentar = df["comment"].fillna("Tanpa ulasan terkait")
+    tabel = pd.DataFrame(
+        {
+            "Waktu": pd.to_datetime(df["triggered_at"]),
+            "Tipe": tipe,
+            "Produk": produk,
+            "Ulasan": komentar,
+            "Rating": df["review_rating"].map(_rating_teks),
+            "Rata-rata": df["rating_avg"].map(_rating_teks),
+        }
+    )
+    st.dataframe(
+        tabel,
+        hide_index=True,
+        width="stretch",
+        height=min(430, 38 + 36 * len(tabel)),
+        column_config={
+            "Waktu": st.column_config.DatetimeColumn("Waktu", format="DD/MM HH:mm"),
+            "Tipe": st.column_config.TextColumn("Tipe", width="small"),
+            "Produk": st.column_config.TextColumn("Produk", width="medium"),
+            "Ulasan": st.column_config.TextColumn("Ulasan", width="large"),
+            "Rating": st.column_config.TextColumn("Rating", width="small"),
+            "Rata-rata": st.column_config.TextColumn("Rata-rata", width="small"),
+        },
+    )
+
+
 def tabel_ulasan(df: pd.DataFrame) -> None:
     baris = []
     for row in df.itertuples(index=False):

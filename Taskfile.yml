@@ -20,6 +20,8 @@ tasks:
   replay:
     desc: Kirim ulang sampel data ke pipeline
     cmds:
+      - cmd: docker compose exec -T data-poller rm -f /app/data/replay_done
+        ignore_error: true
       - docker compose restart data-poller
 
   down:

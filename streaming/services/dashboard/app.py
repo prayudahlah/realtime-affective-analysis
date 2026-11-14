@@ -10,6 +10,8 @@ from components import (
     chart_produk,
     chart_sentimen,
     chart_tren,
+    dataframe_alert,
+    dataframe_ulasan,
     delta_html,
     inject_css,
     kartu,
@@ -19,12 +21,12 @@ from components import (
     persen,
     rating,
     stats_alert,
-    tabel_alert,
-    tabel_ulasan,
     topbar,
 )
-from config import ALL_PRODUCT, AUTO_REFRESH_MS, PAGE_SIZE
+from config import ALL_PRODUCT, AUTO_REFRESH_MS, EMOTIONS, PAGE_SIZE
 from db import (
+    ALERT_SORT,
+    REVIEW_SORT,
     get_active_models,
     get_alert_breakdown,
     get_data_freshness,
@@ -104,6 +106,10 @@ paused = st.session_state["paused"]
 st_autorefresh(interval=3_600_000 if paused else AUTO_REFRESH_MS, key="auto_refresh")
 
 BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+ALERT_LABELS = {
+    "Sentimen Negatif": "sentiment_negative",
+    "Penurunan Rating": "rating_drop",
+}
 
 
 def _tanggal_id(nilai: date) -> str:
@@ -350,14 +356,55 @@ def halaman_ulasan(filters: dict, total: int) -> None:
         else:
             st.plotly_chart(chart_produk(df_produk), width="stretch", config=PLOT_CONFIG)
 
-    halaman = int(st.session_state.get("review_page", 0))
-    df_ulasan = get_reviews_page(filters, limit=PAGE_SIZE, offset=halaman * PAGE_SIZE)
     with kartu("Ulasan Terbaru", f"{angka(total)} ulasan pada rentang ini"):
-        if df_ulasan.empty:
-            kosong("Tidak ada ulasan pada halaman ini.")
+        k1, k2, k3, k4 = st.columns(
+            [1.8, 1.3, 1.1, 0.6], vertical_alignment="bottom"
+        )
+        with k1:
+            cari = st.text_input(
+                "Cari",
+                placeholder="Ulasan atau produk",
+                key="review_search",
+            )
+        with k2:
+            emosi = st.multiselect(
+                "Emosi",
+                EMOTIONS,
+                key="review_emotion",
+                placeholder="Semua emosi",
+            )
+        with k3:
+            urut = st.selectbox("Urutkan", list(REVIEW_SORT), key="review_sort")
+        with k4:
+            if st.button("Reset", key="review_table_reset", width="stretch"):
+                st.session_state.review_search = ""
+                st.session_state.review_emotion = []
+                st.session_state.review_sort = "Terbaru"
+                st.session_state.review_page = 0
+                st.rerun()
+
+        kunci = f"{cari}|{','.join(sorted(emosi))}|{urut}"
+        if st.session_state.get("_review_table_key") != kunci:
+            st.session_state.review_page = 0
+            st.session_state["_review_table_key"] = kunci
+
+        halaman = int(st.session_state.get("review_page", 0))
+        total_tabel = get_total_reviews_count(filters, search=cari, emotions=emosi)
+        df_ulasan = get_reviews_page(
+            filters,
+            limit=PAGE_SIZE,
+            offset=halaman * PAGE_SIZE,
+            search=cari,
+            emotions=emosi,
+            sort=urut,
+        )
+        if total_tabel == 0:
+            kosong("Tidak ada ulasan yang cocok dengan pencarian atau emosi.")
         else:
-            tabel_ulasan(df_ulasan)
-            sebelumnya, berikutnya = pagination("review", halaman, total, PAGE_SIZE)
+            dataframe_ulasan(df_ulasan)
+            sebelumnya, berikutnya = pagination(
+                "review", halaman, total_tabel, PAGE_SIZE
+            )
             if sebelumnya:
                 _ganti_halaman("review_page", max(0, halaman - 1))
             if berikutnya:
@@ -377,14 +424,56 @@ def halaman_alert(filters: dict) -> None:
         )
 
     total_alert = get_total_alerts_count(filters)
-    halaman = int(st.session_state.get("alert_page", 0))
-    df_alert = get_alerts_page(filters, limit=PAGE_SIZE, offset=halaman * PAGE_SIZE)
     with kartu("Riwayat Alert", f"{angka(total_alert)} alert pada rentang ini"):
-        if df_alert.empty:
-            kosong("Belum ada alert pada rentang ini.")
+        k1, k2, k3, k4 = st.columns(
+            [1.8, 1.3, 1.1, 0.6], vertical_alignment="bottom"
+        )
+        with k1:
+            cari = st.text_input(
+                "Cari",
+                placeholder="Ulasan atau produk",
+                key="alert_search",
+            )
+        with k2:
+            tipe_label = st.multiselect(
+                "Tipe",
+                list(ALERT_LABELS),
+                key="alert_type",
+                placeholder="Semua tipe",
+            )
+        with k3:
+            urut = st.selectbox("Urutkan", list(ALERT_SORT), key="alert_sort")
+        with k4:
+            if st.button("Reset", key="alert_table_reset", width="stretch"):
+                st.session_state.alert_search = ""
+                st.session_state.alert_type = []
+                st.session_state.alert_sort = "Terbaru"
+                st.session_state.alert_page = 0
+                st.rerun()
+
+        tipe = [ALERT_LABELS[label] for label in tipe_label]
+        kunci = f"{cari}|{','.join(sorted(tipe))}|{urut}"
+        if st.session_state.get("_alert_table_key") != kunci:
+            st.session_state.alert_page = 0
+            st.session_state["_alert_table_key"] = kunci
+
+        halaman = int(st.session_state.get("alert_page", 0))
+        total_tabel = get_total_alerts_count(filters, search=cari, types=tipe)
+        df_alert = get_alerts_page(
+            filters,
+            limit=PAGE_SIZE,
+            offset=halaman * PAGE_SIZE,
+            search=cari,
+            types=tipe,
+            sort=urut,
+        )
+        if total_tabel == 0:
+            kosong("Tidak ada alert yang cocok dengan pencarian atau tipe.")
         else:
-            tabel_alert(df_alert)
-            sebelumnya, berikutnya = pagination("alert", halaman, total_alert, PAGE_SIZE)
+            dataframe_alert(df_alert)
+            sebelumnya, berikutnya = pagination(
+                "alert", halaman, total_tabel, PAGE_SIZE
+            )
             if sebelumnya:
                 _ganti_halaman("alert_page", max(0, halaman - 1))
             if berikutnya:

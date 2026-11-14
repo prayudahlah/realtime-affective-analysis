@@ -33,5 +33,6 @@ ALERT_TYPE_LABELS = {
 }
 
 ALL_PRODUCT = "__all__"
-PAGE_SIZE = 6
+PAGE_SIZE = 10
+EMOTIONS = ["Anger", "Fear", "Happy", "Love", "Sadness"]
 AUTO_REFRESH_MS = 5000
