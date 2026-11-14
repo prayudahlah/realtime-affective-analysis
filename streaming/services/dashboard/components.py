@@ -110,12 +110,13 @@ div[class*="st-key-card-"] {
 
 .page-info { text-align: center; font-size: 0.74rem; color: var(--muted); padding-top: 0.45rem; }
 
-.alert-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin: 0.2rem 0 0.3rem; }
-.alert-stat { background: transparent; border: none; border-left: 2px solid #DCE6F0;
-  padding: 0.15rem 0 0.15rem 0.7rem; }
-.alert-stat span { display: block; font-size: 0.72rem; color: #7A8A9A; }
-.alert-stat b { display: block; font-size: 1.25rem; color: #2F3E4E; line-height: 1.2; }
-.alert-stat small { display: block; font-size: 0.7rem; color: #4A5A6A; }
+.alert-stats { width: 100%; border-collapse: collapse; margin: 0.2rem 0 0.3rem; }
+.alert-stats td { width: 50%; vertical-align: top; padding: 0.15rem 0 0.15rem 0.7rem;
+  border-left: 2px solid #DCE6F0; }
+.alert-stats td:first-child { border-left: none; padding-left: 0; }
+.alert-stats span { display: block; font-size: 0.72rem; color: #7A8A9A; }
+.alert-stats b { display: block; font-size: 1.25rem; color: #2F3E4E; line-height: 1.2; }
+.alert-stats small { display: block; font-size: 0.7rem; color: #4A5A6A; }
 
 .empty { padding: 1.1rem 0.75rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
 .empty.kotak { background: #FFFFFF; border: 1px dashed var(--line); border-radius: 6px;
@@ -511,12 +512,15 @@ def pagination(key: str, page: int, total: int, size: int) -> tuple[bool, bool]:
 
 
 def stats_alert(items: list[tuple[str, str, str]]) -> None:
-    isi = "".join(
-        f"<div class='alert-stat'><span>{html.escape(label)}</span>"
-        f"<b>{html.escape(value)}</b><small>{html.escape(sub)}</small></div>"
+    sel = "".join(
+        f"<td><span>{html.escape(label)}</span>"
+        f"<b>{html.escape(value)}</b><small>{html.escape(sub)}</small></td>"
         for label, value, sub in items
     )
-    st.markdown(f"<div class='alert-stats'>{isi}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<table class='alert-stats'><tr>{sel}</tr></table>",
+        unsafe_allow_html=True,
+    )
 
 
 def delta_html(value: float | None, naik_baik: bool = True) -> str:
