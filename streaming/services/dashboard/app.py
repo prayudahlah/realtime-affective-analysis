@@ -194,7 +194,7 @@ topbar(
 if MODE == "snapshot":
     st.markdown(
         "<div class='demo-banner'>Demo snapshot, data per "
-        f"{_tanggal_id(SNAPSHOT_DATE)}. Pipeline lengkap berjalan lokal.</div>",
+        f"{_tanggal_id(SNAPSHOT_DATE)}.</div>",
         unsafe_allow_html=True,
     )
 
