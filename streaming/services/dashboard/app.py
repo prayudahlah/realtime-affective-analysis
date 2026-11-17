@@ -1,8 +1,19 @@
+import os
+import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+MODE = os.getenv("DASHBOARD_MODE", "").strip().lower()
+if MODE not in {"live", "snapshot"}:
+    MODE = "live" if (os.getenv("INFERENCE_DB_HOST") or os.getenv("DATABASE_URL")) else "snapshot"
 
 from components import (
     angka,
@@ -24,24 +35,47 @@ from components import (
     topbar,
 )
 from config import ALL_PRODUCT, AUTO_REFRESH_MS, EMOTIONS, PAGE_SIZE
-from db import (
-    ALERT_SORT,
-    REVIEW_SORT,
-    get_active_models,
-    get_alert_breakdown,
-    get_data_freshness,
-    get_alerts_page,
-    get_emotion_distribution,
-    get_kpi_metrics,
-    get_products,
-    get_reviews_page,
-    get_sentiment_distribution,
-    get_time_bounds,
-    get_time_series_rating,
-    get_top_products_by_rating,
-    get_total_alerts_count,
-    get_total_reviews_count,
-)
+if MODE == "snapshot":
+    from db_snapshot import (
+        ALERT_SORT,
+        REVIEW_SORT,
+        SNAPSHOT_DATE,
+        get_active_models,
+        get_alert_breakdown,
+        get_alerts_page,
+        get_data_freshness,
+        get_emotion_distribution,
+        get_kpi_metrics,
+        get_products,
+        get_reviews_page,
+        get_sentiment_distribution,
+        get_time_bounds,
+        get_time_series_rating,
+        get_top_products_by_rating,
+        get_total_alerts_count,
+        get_total_reviews_count,
+    )
+else:
+    from db import (
+        ALERT_SORT,
+        REVIEW_SORT,
+        get_active_models,
+        get_alert_breakdown,
+        get_alerts_page,
+        get_data_freshness,
+        get_emotion_distribution,
+        get_kpi_metrics,
+        get_products,
+        get_reviews_page,
+        get_sentiment_distribution,
+        get_time_bounds,
+        get_time_series_rating,
+        get_top_products_by_rating,
+        get_total_alerts_count,
+        get_total_reviews_count,
+    )
+
+    SNAPSHOT_DATE = None
 
 PLOT_CONFIG = {"displayModeBar": False}
 
@@ -53,21 +87,29 @@ st.set_page_config(
 inject_css()
 
 
+if MODE == "snapshot" and SNAPSHOT_DATE is not None:
+    DEFAULT_FROM = SNAPSHOT_DATE - timedelta(days=30)
+    DEFAULT_TO = SNAPSHOT_DATE
+else:
+    DEFAULT_FROM = date.today() - timedelta(days=30)
+    DEFAULT_TO = date.today()
+
+
 def _init_state() -> None:
-    st.session_state.setdefault("filter_date_from", date.today() - timedelta(days=30))
-    st.session_state.setdefault("filter_date_to", date.today())
+    st.session_state.setdefault("filter_date_from", DEFAULT_FROM)
+    st.session_state.setdefault("filter_date_to", DEFAULT_TO)
     st.session_state.setdefault("filter_product", ALL_PRODUCT)
     st.session_state.setdefault("filter_sentiment", ["Positive", "Negative"])
     st.session_state.setdefault("review_page", 0)
     st.session_state.setdefault("alert_page", 0)
-    st.session_state.setdefault("paused", False)
+    st.session_state.setdefault("paused", MODE == "snapshot")
     st.session_state.setdefault("nav_halaman", "Ringkasan")
     st.session_state.setdefault("_last_filter_key", "")
 
 
 def _reset_filters() -> None:
-    st.session_state.filter_date_from = date.today() - timedelta(days=30)
-    st.session_state.filter_date_to = date.today()
+    st.session_state.filter_date_from = DEFAULT_FROM
+    st.session_state.filter_date_to = DEFAULT_TO
     st.session_state.filter_product = ALL_PRODUCT
     st.session_state.filter_sentiment = ["Positive", "Negative"]
     st.session_state.review_page = 0
@@ -103,7 +145,8 @@ if "nav_initialized" not in st.session_state:
     st.session_state.nav_initialized = True
 
 paused = st.session_state["paused"]
-st_autorefresh(interval=3_600_000 if paused else AUTO_REFRESH_MS, key="auto_refresh")
+if MODE != "snapshot":
+    st_autorefresh(interval=3_600_000 if paused else AUTO_REFRESH_MS, key="auto_refresh")
 
 BULAN = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
 ALERT_LABELS = {
@@ -117,19 +160,26 @@ def _tanggal_id(nilai: date) -> str:
 
 
 sekarang = datetime.now(ZoneInfo("Asia/Jakarta"))
-freshness = get_data_freshness()
-processed_at = freshness.get("processed_at")
-if processed_at is not None:
-    if processed_at.tzinfo is None:
-        processed_at = processed_at.replace(tzinfo=ZoneInfo("Asia/Jakarta"))
-    lag_menit = max(0, int((sekarang - processed_at.astimezone(ZoneInfo("Asia/Jakarta"))).total_seconds() // 60))
-    status_data = "fresh" if lag_menit <= 5 else "warn" if lag_menit <= 15 else "stale"
-    kanan_judul = f"Data terakhir {processed_at.astimezone(ZoneInfo('Asia/Jakarta')):%H:%M}"
-    kanan_sub = "Refresh dijeda" if paused else f"{lag_menit} menit lalu"
+if MODE == "snapshot":
+    info = get_data_freshness()
+    tanggal_snapshot = info.get("snapshot_date") or SNAPSHOT_DATE
+    status_data = "fresh"
+    kanan_judul = f"Snapshot {_tanggal_id(tanggal_snapshot)}"
+    kanan_sub = "Data statis"
 else:
-    status_data = "stale"
-    kanan_judul = "Belum ada data"
-    kanan_sub = "Refresh dijeda" if paused else "Menunggu pipeline"
+    freshness = get_data_freshness()
+    processed_at = freshness.get("processed_at")
+    if processed_at is not None:
+        if processed_at.tzinfo is None:
+            processed_at = processed_at.replace(tzinfo=ZoneInfo("Asia/Jakarta"))
+        lag_menit = max(0, int((sekarang - processed_at.astimezone(ZoneInfo("Asia/Jakarta"))).total_seconds() // 60))
+        status_data = "fresh" if lag_menit <= 5 else "warn" if lag_menit <= 15 else "stale"
+        kanan_judul = f"Data terakhir {processed_at.astimezone(ZoneInfo('Asia/Jakarta')):%H:%M}"
+        kanan_sub = "Refresh dijeda" if paused else f"{lag_menit} menit lalu"
+    else:
+        status_data = "stale"
+        kanan_judul = "Belum ada data"
+        kanan_sub = "Refresh dijeda" if paused else "Menunggu pipeline"
 
 topbar(
     "ASUS Official Shop",
@@ -137,9 +187,16 @@ topbar(
     "Realtime Review Intelligence",
     kanan_judul,
     kanan_sub,
-    paused=paused,
+    paused=paused if MODE == "live" else False,
     status=status_data,
 )
+
+if MODE == "snapshot":
+    st.markdown(
+        "<div class='demo-banner'>Demo snapshot, data per "
+        f"{_tanggal_id(SNAPSHOT_DATE)}. Pipeline lengkap berjalan lokal.</div>",
+        unsafe_allow_html=True,
+    )
 
 navigasi, kontrol = st.columns([5, 1], vertical_alignment="center")
 with navigasi:
@@ -151,7 +208,12 @@ with navigasi:
         on_change=_sinkron_halaman,
     )
 with kontrol:
-    st.toggle("Jeda refresh", key="paused", on_change=_sinkron_jeda)
+    if MODE == "snapshot":
+        st.markdown(
+            "<div class='snapshot-badge'>Mode demo</div>", unsafe_allow_html=True
+        )
+    else:
+        st.toggle("Jeda refresh", key="paused", on_change=_sinkron_jeda)
 
 with st.container(key="sheet"):
     c1, c2, c3, c4, c5 = st.columns([1.0, 1.0, 1.7, 1.2, 0.7], vertical_alignment="bottom")

@@ -87,6 +87,12 @@ div[class*="st-key-card-"] {
 
 .page-info { text-align: center; font-size: 0.74rem; color: var(--muted); padding-top: 0.45rem; }
 
+.demo-banner { background: #E3EEF9; border: 1px solid var(--line); border-radius: 6px;
+  padding: 0.45rem 0.7rem; font-size: 0.78rem; color: #2F3E5A; margin: 0.1rem 0 0.15rem; }
+.snapshot-badge { text-align: center; font-size: 0.74rem; color: #5A6B7B;
+  border: 1px solid var(--line); border-radius: 999px; padding: 0.25rem 0.5rem;
+  background: #F4F7FB; }
+
 .alert-stats { width: 100%; border-collapse: collapse; margin: 0.2rem 0 0.3rem; }
 .alert-stats td { width: 50%; vertical-align: top; padding: 0.15rem 0 0.15rem 0.7rem;
   border-left: 2px solid #DCE6F0; }
