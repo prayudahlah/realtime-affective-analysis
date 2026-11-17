@@ -4,6 +4,8 @@ Klasifikasi sentimen dan emosi ulasan e-commerce secara real-time, dari pengambi
 
 ![Dashboard](assets/dashboard.png)
 
+**Live demo:** [realtime-affective-analysis.streamlit.app](https://realtime-affective-analysis.streamlit.app/) memakai snapshot statis 14 November 2026. Pipeline lengkap di bawah berjalan lokal.
+
 ## Ringkasan
 
 Ulasan toko di Shopee diambil lewat API, dialirkan ke Kafka, diproses dengan Spark Structured Streaming, disimpan di MongoDB, lalu perubahannya ditangkap Debezium dan diklasifikasi sentimen serta emosinya. Hasilnya masuk PostgreSQL, tampil di dashboard Streamlit, dan memicu alert.
